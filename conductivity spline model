@@ -1,0 +1,445 @@
+# ==========================================================
+# CELL 1 - THE MODEL
+# ==========================================================
+
+import os
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from scipy.interpolate import SmoothBivariateSpline, RectBivariateSpline
+from scipy.spatial import Delaunay
+
+FIG_DIR = 'Figures'
+os.makedirs(FIG_DIR, exist_ok=True)
+
+SQRT_I = True  # GLOBAL SWITCH: fit splines against sqrt(I) instead of raw I
+
+MIN_POINTS = 16
+REFERENCE_PRESSURE_MPA = 0.1
+
+plt.rcParams.update({
+    'font.size': 11,
+    'axes.labelsize': 11,
+    'axes.titlesize': 11,
+    'legend.fontsize': 9,
+    'figure.dpi': 100,
+    'savefig.bbox': 'tight',
+})
+
+
+def save_fig(fig, name):
+    """Save a figure as both vector PDF (for Overleaf) and 300dpi PNG (for quick preview)."""
+    pdf_path = os.path.join(FIG_DIR, f'{name}.pdf')
+    png_path = os.path.join(FIG_DIR, f'{name}.png')
+    fig.savefig(pdf_path)
+    fig.savefig(png_path, dpi=300)
+    print(f"  saved {pdf_path} and {png_path}")
+
+
+# ==========================================
+# 0. SPLINE WRAPPER (cubic B-spline, grid-aware)
+# ==========================================
+
+class IonSpline:
+    """
+    Replaces CloughTocher2DInterpolator with a cubic (kx=ky=3) tensor-product
+    B-spline, while keeping the same .ev(t, I) / .ev_or_nan(t, I) interface.
+    Includes built-in validation of thermodynamic and physical limits.
+    """
+
+    def __init__(self, t, I, lambda_val, label, s=None, kx=3, ky=3, grid_decimals=6):
+        self.label = label
+        t = np.asarray(t, dtype=float)
+        I = np.asarray(I, dtype=float)
+        lambda_val = np.asarray(lambda_val, dtype=float)
+
+        n_t, n_I = len(np.unique(t)), len(np.unique(I))
+        if n_t < kx + 1 or n_I < ky + 1:
+            raise ValueError(
+                f"{label}: a bidegree-{kx} spline needs >= {kx + 1} distinct T values "
+                f"and >= {ky + 1} distinct I values; got {n_t} T levels, {n_I} I levels."
+            )
+
+        m = len(t)
+        s_used = (m - np.sqrt(2 * m)) if s is None else s
+        self.s_used = s_used
+
+        grid = self._try_grid(t, I, lambda_val, grid_decimals)
+        try:
+            if grid is not None:
+                Tg, Ig, Z = grid
+                X_g = np.sqrt(Ig) if SQRT_I else Ig
+                self._spline = RectBivariateSpline(Tg, X_g, Z, kx=kx, ky=ky, s=s_used)
+                self.method = 'grid (RectBivariateSpline)'
+            else:
+                X_scatter = np.sqrt(I) if SQRT_I else I
+                self._spline = SmoothBivariateSpline(t, X_scatter, lambda_val, kx=kx, ky=ky, s=s_used)
+                self.method = 'scattered (SmoothBivariateSpline)'
+        except Exception as e:
+            raise RuntimeError(
+                f"{label}: bicubic spline fit failed (s={s_used}, method attempt="
+                f"{'grid' if grid is not None else 'scattered'}): {e}. "
+                f"Try raising s, or check for near-duplicate/near-collinear (T, I) points."
+            )
+
+        # CRITICAL FIX: Build the hull in the same coordinate space used by the spline fit
+        self._hull = Delaunay(np.column_stack([t, self._x(I)]))
+        self.t_range = (float(t.min()), float(t.max()))
+        self.I_range = (float(I.min()), float(I.max()))
+
+        # Post-fit physical assumption check
+        self.validate_physics()
+
+    @staticmethod
+    def _try_grid(t, I, lam, decimals):
+        df = pd.DataFrame({'t': np.round(t, decimals), 'I': np.round(I, decimals), 'lam': lam})
+        df = df.drop_duplicates(subset=['t', 'I'])
+        if len(df) < 2: return None
+        piv = df.pivot(index='t', columns='I', values='lam')
+        if piv.isna().any().any(): return None
+        return piv.index.values, piv.columns.values, piv.values
+
+    def _in_hull(self, t_query, I_query):
+        # CRITICAL FIX: Query the hull using transformed coordinates
+        return self._hull.find_simplex(np.column_stack([t_query, self._x(I_query)])) >= 0
+
+    def _x(self, I):
+        return np.sqrt(I) if SQRT_I else np.asarray(I, dtype=float)
+
+    def ev_or_nan(self, t_query, I_query):
+        t_query, I_query = np.atleast_1d(t_query), np.atleast_1d(I_query)
+        z = self._spline.ev(t_query, self._x(I_query))
+        return np.where(self._in_hull(t_query, I_query), z, np.nan)
+
+    def ev(self, t_query, I_query):
+        result = self.ev_or_nan(t_query, I_query)
+        if np.any(np.isnan(result)):
+            raise ValueError(f"{self.label} spline: query point(s) fall outside the convex hull.")
+        return result if result.size > 1 else result.item()
+
+    def dT(self, t_query, I_query):
+        t_query, I_query = np.atleast_1d(t_query), np.atleast_1d(I_query)
+        z = self._spline.ev(t_query, self._x(I_query), dx=1, dy=0)
+        return np.where(self._in_hull(t_query, I_query), z, np.nan)
+
+    def dI_val(self, t_query, I_query):
+        t_query, I_query = np.atleast_1d(t_query), np.atleast_1d(I_query)
+        g = self._spline.ev(t_query, self._x(I_query), dx=0, dy=1)
+        val = g / (2 * np.sqrt(I_query)) if SQRT_I else g
+        return np.where(self._in_hull(t_query, I_query), val, np.nan)
+
+    def d2I_val(self, t_query, I_query):
+        t_query, I_query = np.atleast_1d(t_query), np.atleast_1d(I_query)
+        g1 = self._spline.ev(t_query, self._x(I_query), dx=0, dy=1)
+        g2 = self._spline.ev(t_query, self._x(I_query), dx=0, dy=2)
+        if SQRT_I:
+            u = np.sqrt(I_query)
+            val = g2 / (4 * I_query) - g1 / (4 * I_query * u)
+        else:
+            val = g2
+        return np.where(self._in_hull(t_query, I_query), val, np.nan)
+
+
+
+    def validate_physics(self):
+        """Sweeps a dense grid over the hull to check thermodynamic rules.
+        I is sampled logarithmically so the low-I decades (where the
+        sqrt(I) behaviour lives) are audited as densely as high I."""
+        t_vals = np.linspace(self.t_range[0], self.t_range[1], 50)
+        I_lo = max(1e-6, self.I_range[0])
+        I_vals = np.geomspace(I_lo, self.I_range[1], 50)
+        Tg, Ig = np.meshgrid(t_vals, I_vals)
+        Tg_flat, Ig_flat = Tg.ravel(), Ig.ravel()
+
+        inside = self._in_hull(Tg_flat, Ig_flat)
+        Ti, Ii = Tg_flat[inside], Ig_flat[inside]
+
+        if len(Ti) == 0: return
+
+        lam = self.ev_or_nan(Ti, Ii)
+        dT = self.dT(Ti, Ii)
+        dI = self.dI_val(Ti, Ii)
+        d2I = self.d2I_val(Ti, Ii)
+
+        violations = []
+        if np.any(lam < 0): violations.append(f"{(lam < 0).sum()} points have lam < 0")
+        if np.any(dT < 0):  violations.append(f"{(dT < 0).sum()} points have dT < 0")
+        if np.any(dI > 0):  violations.append(f"{(dI > 0).sum()} points have dI > 0")
+        if np.any(d2I < 0): violations.append(f"{(d2I < 0).sum()} points have d2I < 0")
+
+        if violations:
+            print(f"  [PHYSICS WARNING for {self.label}]: Model boundaries violated inside hull:")
+            for v in violations:
+                print(f"    - {v}")
+
+
+
+
+# ==========================================
+# 0.5 ION CONDUCTIVITY MODEL
+# ==========================================
+
+class IonConductivityModel:
+    SALT_STOICHIOMETRY = {
+        'KCl':    {'K': 1, 'Cl': 1},
+        'NaCl':   {'Na': 1, 'Cl': 1},
+        'MgCl2':  {'Mg': 1, 'Cl': 2},
+        'Na2SO4': {'Na': 2, 'SO4': 1},
+        'K2SO4':  {'K': 2, 'SO4': 1},
+    }
+
+    def __init__(self):
+        self.splines = {}
+
+    def add_ion(self, ion_name, spline):
+        self.splines[ion_name] = spline
+        return spline
+
+    def ion(self, ion_name):
+        if ion_name not in self.splines:
+            raise KeyError(f"No fitted spline for ion '{ion_name}' yet. "
+                           f"Available: {list(self.splines)}")
+        return self.splines[ion_name]
+
+    def stoich_for(self, salt_name):
+        if salt_name not in self.SALT_STOICHIOMETRY:
+            raise ValueError(f"Unknown salt '{salt_name}'. Known salts: {list(self.SALT_STOICHIOMETRY)}")
+        return self.SALT_STOICHIOMETRY[salt_name]
+
+    def predict(self, salt_name, T_K, molality, allow_extrapolation_nan=True):
+        stoich = self.stoich_for(salt_name)
+        T_K = np.atleast_1d(np.asarray(T_K, dtype=float))
+        molality = np.atleast_1d(np.asarray(molality, dtype=float))
+        I = molality * get_ionic_strength_factor(salt_name)
+
+        total = np.zeros_like(T_K, dtype=float)
+        for ion_name, nu in stoich.items():
+            spline = self.ion(ion_name)
+            eval_fn = spline.ev_or_nan if allow_extrapolation_nan else spline.ev
+            lam = eval_fn(T_K, I)
+            total = total + nu * molality * lam
+        return total if total.size > 1 else total.item()
+
+
+# ==========================================
+# 1. LOAD DATA
+# ==========================================
+
+df = pd.read_csv('empirical_conductivity_library.csv')
+
+required_cols = {'Salt', 'Temperature_C', 'Molality_molkg', 'Conductivity_mScm', 'Pressure_MPa'}
+missing = required_cols - set(df.columns)
+if missing:
+    raise ValueError(f"CSV is missing required columns: {missing}")
+
+ALL_SALTS = ['KCl', 'NaCl', 'MgCl2', 'Na2SO4', 'K2SO4']
+
+
+def get_ionic_strength_factor(salt_name):
+    if salt_name in ['KCl', 'NaCl']:
+        return 1.0
+    elif salt_name in ['MgCl2', 'Na2SO4', 'K2SO4']:
+        return 3.0
+    else:
+        raise ValueError(f"Unknown salt logic for {salt_name}")
+
+
+salt_dfs = {}
+for salt in ALL_SALTS:
+    d = df[df['Salt'] == salt].copy()
+    if d.empty:
+        raise ValueError(f"No rows found for salt '{salt}'. Check CSV.")
+
+    at_reference_pressure = d['Pressure_MPa'] == REFERENCE_PRESSURE_MPA
+    d = d[at_reference_pressure].copy()
+    if d.empty:
+        raise ValueError(f"{salt} has no rows at reference pressure.")
+
+    missing_molality_mask = d['Molality_molkg'].isna()
+    d = d[~missing_molality_mask].copy()
+    if d.empty:
+        raise ValueError(f"{salt} has no usable rows left.")
+
+    d = d.rename(columns={'Molality_molkg': 'Molality', 'Temperature_C': 'Temperature',
+                           'Conductivity_mScm': 'Conductivity'})
+    d['temp_K'] = d['Temperature'] + 273.15
+    d['I'] = d['Molality'] * get_ionic_strength_factor(salt)
+
+    salt_dfs[salt] = d
+    print(f"{salt}: {len(d)} points at {REFERENCE_PRESSURE_MPA} MPa, "
+          f"molality {d['Molality'].min():.4f}-{d['Molality'].max():.4f} mol/kg, "
+          f"I {d['I'].min():.4f}-{d['I'].max():.4f} mol/kg")
+
+
+# ==========================================
+# 2. TRANSPORT NUMBER FUNCTION
+# ==========================================
+
+def calculate_t_kcl(temp_C, molality):
+    term1 = (9.04e-7 * (temp_C ** 2)) - (0.000235 * temp_C) + 0.4960
+    sqrt_m = np.sqrt(molality)
+    term2 = 0.0027 * (sqrt_m / (1.0 + 0.05 * sqrt_m))
+    return term1 - term2
+
+
+# ==========================================
+# 3. HELPERS
+# ==========================================
+
+def fit_lambda_spline(d, label, t_col='temp_K', I_col='I', lambda_col='Lambda', s=None):
+    d = d.copy()
+    d = d.drop_duplicates(subset=[t_col, I_col])
+    if len(d) < MIN_POINTS:
+        raise ValueError(f"{label} has too few points ({len(d)}) for a usable bicubic spline surface.")
+
+    spline = IonSpline(d[t_col].values, d[I_col].values, d[lambda_col].values, label, s=s)
+
+    fitted = spline.ev(d[t_col].values, d[I_col].values)
+    rel_rmse = np.sqrt(np.mean((d[lambda_col].values - fitted) ** 2)) / d[lambda_col].mean()
+    print(f"{label}: interpolant built on {len(d)} points [{spline.method}], "
+          f"s={spline.s_used:.3g}, training rel. RMSE={rel_rmse:.3e}, "
+          f"T {spline.t_range[0]:.1f}-{spline.t_range[1]:.1f} K, "
+          f"I {spline.I_range[0]:.4f}-{spline.I_range[1]:.4f} mol/kg")
+    return spline, spline.t_range, spline.I_range, d
+
+
+def subtract_ion_molar(source_df, salt_name, known_ion, model, new_ion_pretty_label=None):
+    stoich = model.stoich_for(salt_name)
+    if known_ion not in stoich:
+        raise ValueError(f"{salt_name} stoichiometry {stoich} has no ion '{known_ion}'.")
+    unknown_ions = [ion for ion in stoich if ion != known_ion]
+    if len(unknown_ions) != 1:
+        raise ValueError(f"subtract_ion_molar only supports two-ion salts; {salt_name} stoichiometry is {stoich}.")
+    new_ion = unknown_ions[0]
+    ion_stoich = stoich[known_ion]
+    new_ion_stoich = stoich[new_ion]
+    new_ion_label = new_ion_pretty_label or f"{new_ion} (from {salt_name})"
+
+    ion_spline = model.ion(known_ion)
+
+    I_vals = source_df['I'].values
+    t_vals = source_df['temp_K'].values
+    m_salt = source_df['Molality'].values
+
+    lambda_known = ion_spline.ev_or_nan(t_vals, I_vals)
+    in_hull = ~np.isnan(lambda_known)
+    n_out = (~in_hull).sum()
+    if n_out > 0:
+        print(f"NOTE: {salt_name} -> {new_ion_label}: {n_out}/{len(source_df)} points fall outside "
+              f"the {known_ion} spline's convex hull at solution I. Excluded.")
+
+    kappa_salt = source_df['Conductivity'].values[in_hull]
+    m_scaled = m_salt[in_hull]
+
+    kappa_residual = kappa_salt - (ion_stoich * m_scaled * lambda_known[in_hull])
+    lambda_new = kappa_residual / (new_ion_stoich * m_scaled)
+
+    t_kept = t_vals[in_hull]
+    I_kept = I_vals[in_hull]
+    m_kept = m_scaled
+
+    pos = lambda_new > 0
+    if (~pos).any():
+        print(f"WARNING: {(~pos).sum()} {new_ion_label} points are non-positive. Dropped.")
+
+    ion_df = pd.DataFrame({'temp_K': t_kept[pos], 'I': I_kept[pos], 'Molality': m_kept[pos], 'Lambda': lambda_new[pos]})
+    spline, t_range, I_range, ion_df = fit_lambda_spline(ion_df, new_ion_label)
+    model.add_ion(new_ion, spline)
+    return spline, t_range, I_range, ion_df
+
+
+# ==========================================
+# 4. STEP 1: KCl -> K+ and Cl-
+# ==========================================
+
+df_kcl = salt_dfs['KCl'].copy()
+df_kcl['Lambda_Salt'] = df_kcl['Conductivity'] / df_kcl['Molality']
+
+t_plus = calculate_t_kcl(df_kcl['Temperature'].values, df_kcl['Molality'].values)
+df_kcl['Lambda_K'] = t_plus * df_kcl['Lambda_Salt']
+df_kcl['Lambda_Cl'] = df_kcl['Lambda_Salt'] - df_kcl['Lambda_K']
+
+df_k_ion = pd.DataFrame({'temp_K': df_kcl['temp_K'], 'I': df_kcl['I'],
+                          'Molality': df_kcl['Molality'], 'Lambda': df_kcl['Lambda_K']})
+df_cl_ion = pd.DataFrame({'temp_K': df_kcl['temp_K'], 'I': df_kcl['I'],
+                           'Molality': df_kcl['Molality'], 'Lambda': df_kcl['Lambda_Cl']})
+
+model = IonConductivityModel()
+spline_k,  k_t_range,  k_I_range,  df_k_ion  = fit_lambda_spline(df_k_ion,  'K+ (from KCl)')
+spline_cl, cl_t_range, cl_I_range, df_cl_ion = fit_lambda_spline(df_cl_ion, 'Cl- (from KCl)')
+model.add_ion('K', spline_k)
+model.add_ion('Cl', spline_cl)
+
+# ==========================================
+# 5. STEP 2: NaCl -> Na+
+# ==========================================
+df_nacl = salt_dfs['NaCl'].copy()
+spline_na, na_t_range, na_I_range, df_na_ion = subtract_ion_molar(
+    df_nacl, 'NaCl', known_ion='Cl', model=model, new_ion_pretty_label='Na+ (from NaCl)')
+
+# ==========================================
+# 6. STEP 3: MgCl2 -> Mg2+
+# ==========================================
+df_mgcl2 = salt_dfs['MgCl2'].copy()
+spline_mg, mg_t_range, mg_I_range, df_mg_ion = subtract_ion_molar(
+    df_mgcl2, 'MgCl2', known_ion='Cl', model=model, new_ion_pretty_label='Mg2+ (from MgCl2)')
+
+# ==========================================
+# 7. STEP 4: Na2SO4 -> SO4 2-
+# ==========================================
+df_na2so4 = salt_dfs['Na2SO4'].copy()
+spline_so4, so4_t_range, so4_I_range, df_so4_ion = subtract_ion_molar(
+    df_na2so4, 'Na2SO4', known_ion='Na', model=model, new_ion_pretty_label='SO4 2- (from Na2SO4)')
+
+
+# ==========================================
+# 8. PUBLICATION FIGURE: ALL FIVE IONIC SURFACES
+# ==========================================
+
+ION_SPLINES = {
+    'K$^+$':        (spline_k,  k_t_range,  k_I_range,  df_k_ion),
+    'Cl$^-$':       (spline_cl, cl_t_range, cl_I_range, df_cl_ion),
+    'Na$^+$':       (spline_na, na_t_range, na_I_range, df_na_ion),
+    'Mg$^{2+}$':    (spline_mg, mg_t_range, mg_I_range, df_mg_ion),
+    'SO$_4^{2-}$':  (spline_so4, so4_t_range, so4_I_range, df_so4_ion),
+}
+
+
+def plot_ion_spline(spline, t_range, I_range, ion_df, title, ax, n_points=60):
+    Tg, Ig = np.meshgrid(np.linspace(t_range[0], t_range[1], n_points),
+                          np.linspace(I_range[0], I_range[1], n_points))
+    Z = spline.ev_or_nan(Tg.ravel(), Ig.ravel()).reshape(Tg.shape)
+    surf = ax.plot_surface(Tg, Ig, Z, cmap='viridis', linewidth=0, antialiased=True, alpha=0.9)
+    ax.scatter(ion_df['temp_K'], ion_df['I'], ion_df['Lambda'],
+               color='black', s=6, depthshade=False)
+    ax.set_title(title, pad=0)
+    ax.set_xlabel('T (K)', labelpad=2)
+    ax.set_ylabel('I (mol kg$^{-1}$)', labelpad=2)
+    ax.set_zlabel(r'$\lambda_i$ (mS cm$^{-1}$ M$^{-1}$)', labelpad=2)
+    ax.tick_params(pad=0, labelsize=8)
+    return surf
+
+
+print("\nGenerating ionic surface figures...")
+fig = plt.figure(figsize=(13, 8))
+for i, (name, (spl, tr, ir, ion_df)) in enumerate(ION_SPLINES.items(), start=1):
+    ax = fig.add_subplot(2, 3, i, projection='3d')
+    plot_ion_spline(spl, tr, ir, ion_df, name, ax)
+fig.suptitle('Deconvolved ionic molar conductivity surfaces (dots = derived data points)', y=0.98)
+fig.tight_layout()
+save_fig(fig, 'ionic_surfaces')
+plt.show()
+
+for name, (spl, tr, ir, ion_df) in ION_SPLINES.items():
+    safe = (name.replace('$', '').replace('^', '').replace('_', '').replace('{', '')
+                .replace('}', '').replace('+', 'plus').replace('-', 'minus'))
+    fig = plt.figure(figsize=(6, 5))
+    ax = fig.add_subplot(111, projection='3d')
+    plot_ion_spline(spl, tr, ir, ion_df, name, ax)
+    fig.tight_layout()
+    save_fig(fig, f'ion_surface_{safe}')
+    plt.close(fig)
+
+print("\nCell 1 done. Molar Ion splines available: spline_k, spline_cl, spline_na, spline_mg, spline_so4")
+for name, (spl, tr, ir, _) in ION_SPLINES.items():
+    print(f"  {name:12s} native range: T {tr[0]:.1f}-{tr[1]:.1f} K, I {ir[0]:.4f}-{ir[1]:.4f} mol/kg")
