@@ -1,0 +1,198 @@
+# ==========================================================
+# CELL 2 - K2SO4 HELD-OUT ADDITIVITY TEST
+# ==========================================================
+
+import os
+import shutil
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from scipy import stats as sstats
+
+for _name in ('salt_dfs', 'spline_k', 'spline_so4', 'k_t_range', 'k_I_range',
+              'so4_t_range', 'so4_I_range', 'save_fig', 'FIG_DIR'):
+    if _name not in globals():
+        raise NameError(f"'{_name}' not found - run Cell 1 first.")
+
+PCT_STABLE_MOLALITY = 0.01
+
+# ==========================================================
+# SHARED DIAGNOSTIC HELPERS
+# ==========================================================
+
+def fit_quality_stats(real, reconstructed):
+    real = np.asarray(real, dtype=float)
+    reconstructed = np.asarray(reconstructed, dtype=float)
+    resid = reconstructed - real
+    rmse = np.sqrt(np.mean(resid**2))
+    mae = np.mean(np.abs(resid))
+    ss_res_11 = np.sum((reconstructed - real)**2)
+    ss_tot = np.sum((real - real.mean())**2)
+    r2_11 = 1 - ss_res_11/ss_tot if ss_tot > 0 else np.nan
+    slope, intercept = np.polyfit(real, reconstructed, 1)
+    return {'rmse': rmse, 'mae': mae, 'r2_vs_1to1_line': r2_11,
+            'best_fit_slope': slope, 'best_fit_intercept': intercept, 'n': len(real)}
+
+def print_fit_quality(label, real, reconstructed, units='mS/cm'):
+    s = fit_quality_stats(real, reconstructed)
+    print(f"\n  Fit quality ({label}):")
+    print(f"    n = {s['n']}")
+    print(f"    RMSE: {s['rmse']:.4f} {units}   MAE: {s['mae']:.4f} {units}")
+    print(f"    R-squared vs perfect 1:1 line: {s['r2_vs_1to1_line']:.4f}")
+    print(f"    Best-fit: reconstructed = {s['best_fit_slope']:.4f} x real + {s['best_fit_intercept']:.4f}")
+    return s
+
+def diagnose_error_structure(label, T_vals, M_vals, pct_dev):
+    T_vals = np.asarray(T_vals, dtype=float)
+    M_vals = np.asarray(M_vals, dtype=float)
+    pct_dev = np.asarray(pct_dev, dtype=float)
+    print(f"\n  Error structure diagnosis ({label}):")
+    if len(T_vals) < 4:
+        print("    Too few points for statistical breakdown.")
+        return
+    r_m, p_m = sstats.pearsonr(M_vals, pct_dev) if len(set(M_vals)) > 1 else (np.nan, np.nan)
+    print(f"    Linear correlation: dev vs molality r={r_m:.3f} (p={p_m:.4f})")
+
+# ==========================================================
+# 1. SELECT USABLE K2SO4 POINTS (Hull filtering over environment Ionic Strength)
+# ==========================================================
+
+k2so4_real_df = salt_dfs['K2SO4'][['temp_K', 'Molality', 'I', 'Conductivity', 'Source']].copy()
+n_total = len(k2so4_real_df)
+print(f"=== K2SO4 held-out additivity test ===")
+print(f"K2SO4: {n_total} total reference measurements.")
+
+T_all = k2so4_real_df['temp_K'].values
+M_all = k2so4_real_df['Molality'].values
+I_all = k2so4_real_df['I'].values  # This is 3 * m_K2SO4
+
+lambda_k_part = spline_k.ev_or_nan(T_all, I_all)
+lambda_so4_part = spline_so4.ev_or_nan(T_all, I_all)
+
+in_hull = ~np.isnan(lambda_k_part) & ~np.isnan(lambda_so4_part)
+n_excluded = (~in_hull).sum()
+if n_excluded > 0:
+    print(f"NOTE: {n_excluded}/{n_total} points fall outside the K+ and/or SO4 2- molar "
+          f"convex hulls over Ionic Strength (e.g. highest concentration levels drop out clean).")
+if in_hull.sum() == 0:
+    raise RuntimeError("No usable K2SO4 points inside the baseline ionic strength hull.")
+
+k2so4_usable = k2so4_real_df[in_hull].reset_index(drop=True)
+T_k2so4 = k2so4_usable['temp_K'].values
+M_k2so4 = k2so4_usable['Molality'].values
+I_k2so4 = k2so4_usable['I'].values
+Z_k2so4_real = k2so4_usable['Conductivity'].values
+Source_k2so4 = k2so4_usable['Source'].values
+
+Z_yours_at_k2so4 = (2.0 * M_k2so4 * lambda_k_part[in_hull]) + (M_k2so4 * lambda_so4_part[in_hull])
+n_usable = len(k2so4_usable)
+print(f"Using {n_usable}/{n_total} points after filtering.")
+
+# ==========================================================
+# 2. DEVIATION METRICS
+# ==========================================================
+pct_dev = 100.0 * (Z_yours_at_k2so4 - Z_k2so4_real) / Z_k2so4_real
+stable = M_k2so4 > PCT_STABLE_MOLALITY
+
+print(f"\n--- Deviation statistics ---")
+print(f"m > {PCT_STABLE_MOLALITY} mol/kg only ({stable.sum()} points):")
+print(f"  mean signed: {np.mean(pct_dev[stable]):+.2f}%   mean abs: {np.mean(np.abs(pct_dev[stable])):.2f}%   "
+      f"max abs: {np.max(np.abs(pct_dev[stable])):.2f}%")
+
+print_fit_quality('K2SO4 reconstructed vs empirical', Z_k2so4_real, Z_yours_at_k2so4)
+diagnose_error_structure('K2SO4', T_k2so4, M_k2so4, pct_dev)
+
+# ==========================================================
+# 3. DIAGNOSTIC FIGURES
+# ==========================================================
+unique_sources = sorted(set(Source_k2so4))
+markers = ['o', 's', '^', 'D', 'v', 'P']
+
+fig, ax = plt.subplots(figsize=(6.5, 4.2))
+ax.axhspan(-10, 10, color='0.85', alpha=0.6, zorder=0, label=r'$\pm$10%')
+for i, src in enumerate(unique_sources):
+    mask = Source_k2so4 == src
+    ax.scatter(M_k2so4[mask], pct_dev[mask], s=28, marker=markers[i % len(markers)], label=src, zorder=3)
+ax.axhline(0, color='black', lw=0.8)
+ax.set_xscale('log')
+ax.set_xlabel(r'K$_2$SO$_4$ molality (mol kg$^{-1}$)')
+ax.set_ylabel('Signed deviation (%)')
+ax.set_title(r'K$_2$SO$_4$ reconstruction: deviation vs molality')
+ax.legend()
+save_fig(fig, 'k2so4_deviation_vs_molality')
+plt.show()
+
+fig, ax = plt.subplots(figsize=(6.5, 4.2))
+ax.axhspan(-10, 10, color='0.85', alpha=0.6, zorder=0, label=r'$\pm$10%')
+sc = ax.scatter(T_k2so4, pct_dev, c=M_k2so4, cmap='viridis', s=28, zorder=3, norm=plt.matplotlib.colors.LogNorm())
+plt.colorbar(sc, ax=ax, label=r'molality (mol kg$^{-1}$)')
+ax.axhline(0, color='black', lw=0.8)
+ax.set_xlabel('Temperature (K)')
+ax.set_ylabel('Signed deviation (%)')
+ax.set_title(r'K$_2$SO$_4$ reconstruction: deviation vs temperature')
+save_fig(fig, 'k2so4_deviation_vs_temperature')
+plt.show()
+
+fig, ax = plt.subplots(figsize=(5.2, 5.2))
+lims = [0, max(Z_k2so4_real.max(), Z_yours_at_k2so4.max()) * 1.05]
+ax.plot(lims, lims, ls='--', color='gray', lw=1, label='1:1 Line')
+for i, src in enumerate(unique_sources):
+    mask = Source_k2so4 == src
+    ax.scatter(Z_k2so4_real[mask], Z_yours_at_k2so4[mask], s=28, marker=markers[i % len(markers)], label=src, zorder=3)
+s = fit_quality_stats(Z_k2so4_real, Z_yours_at_k2so4)
+ax.text(0.05, 0.95, f"$R^2$ = {s['r2_vs_1to1_line']:.4f}\nRMSE = {s['rmse']:.3f}\nn = {s['n']}",
+        transform=ax.transAxes, va='top', bbox=dict(boxstyle='round', fc='white', ec='black', lw=0.6))
+ax.set_xlim(lims); ax.set_ylim(lims)
+ax.set_xlabel(r'Empirical conductivity (mS cm$^{-1}$)')
+ax.set_ylabel(r'Reconstructed conductivity (mS cm$^{-1}$)')
+ax.set_title(r'K$_2$SO$_4$: reconstructed vs empirical')
+ax.set_aspect('equal')
+save_fig(fig, 'k2so4_parity')
+plt.show()
+
+fig, ax = plt.subplots(figsize=(6.5, 4.5))
+vmax = max(np.max(np.abs(pct_dev)), 1.0)
+sc = ax.scatter(T_k2so4, M_k2so4, c=pct_dev, cmap='RdBu_r', vmin=-vmax, vmax=vmax, s=60, edgecolors='black', linewidths=0.4)
+plt.colorbar(sc, ax=ax, label='Signed deviation (%)')
+ax.set_yscale('log')
+ax.set_xlabel('Temperature (K)')
+ax.set_ylabel(r'K$_2$SO$_4$ molality (mol kg$^{-1}$)')
+ax.set_title(r'K$_2$SO$_4$: structure of the additivity error')
+save_fig(fig, 'k2so4_deviation_map')
+plt.show()
+
+fig, ax = plt.subplots(figsize=(6.5, 4.5))
+temps = np.unique(np.round(T_k2so4, 1))
+cmap = plt.get_cmap('plasma')
+for i, tval in enumerate(temps):
+    color = cmap(i / max(len(temps) - 1, 1))
+    mask = np.isclose(T_k2so4, tval, atol=0.1)
+    ax.scatter(M_k2so4[mask], Z_k2so4_real[mask], color=color, s=26, zorder=3)
+
+    m_grid = np.logspace(np.log10(M_k2so4.min()), np.log10(M_k2so4.max()), 200)
+    I_grid = m_grid * 3.0
+
+    lambda_k_grid = spline_k.ev_or_nan(np.full_like(I_grid, tval), I_grid)
+    lambda_so4_grid = spline_so4.ev_or_nan(np.full_like(I_grid, tval), I_grid)
+    z_grid = (2.0 * m_grid * lambda_k_grid) + (m_grid * lambda_so4_grid)
+
+    ok = ~np.isnan(z_grid)
+    ax.plot(m_grid[ok], z_grid[ok], color=color, lw=1.2, label=f'{tval:.0f} K')
+ax.set_xscale('log')
+ax.set_xlabel(r'K$_2$SO$_4$ molality (mol kg$^{-1}$)')
+ax.set_ylabel(r'Conductivity (mS cm$^{-1}$)')
+ax.set_title(r'K$_2$SO$_4$ isotherms: measurements vs framework lines')
+ax.legend(title='T', ncol=2, fontsize=8)
+save_fig(fig, 'k2so4_isotherms')
+plt.show()
+
+fig, ax = plt.subplots(figsize=(5.5, 3.8))
+ax.hist(pct_dev[stable], bins=15, color='steelblue', edgecolor='black', linewidth=0.5)
+ax.axvline(0, color='black', lw=0.8)
+ax.axvline(np.mean(pct_dev[stable]), color='crimson', ls='--', lw=1, label=f'mean = {np.mean(pct_dev[stable]):+.2f}%')
+ax.set_xlabel('Signed deviation (%)')
+ax.set_ylabel('Count')
+ax.set_title(rf'K$_2$SO$_4$ deviation distribution (m > {PCT_STABLE_MOLALITY})')
+ax.legend()
+save_fig(fig, 'k2so4_deviation_histogram')
+plt.show()
