@@ -1,0 +1,160 @@
+# ==========================================================
+# CELL 4 - VALIDATION FRAMEWORK VS MCCLESKEY
+# ==========================================================
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy import stats as sstats
+
+# 1. Pipeline and state validation
+for _required in ('k2so4_usable', 'Z_yours_at_k2so4', 'Z_k2so4_real',
+                  'T_k2so4', 'M_k2so4', 'I_k2so4', 'save_fig'):
+    if _required not in globals():
+        raise NameError(f"Missing '{_required}' in memory. Run Cells 1 and 2 first.")
+
+PCT_STABLE_MOLALITY = 0.01  # same threshold as Cell 2
+
+# ==========================================================
+# 2. McCLESKEY (2011) MODEL - Table 1, actual published form
+#    lam_i(T, I) = lam0_i(T) - A_i(T) * sqrt(I) / (1 + B_i * sqrt(I))
+#    lam0(T) = a*T^2 + b*T + c
+#    A(T)    = p*T^2 + q*T + r
+#    T in degrees Celsius, I = ionic strength (mol/kg)
+#    kappa_salt = sum_i nu_i * m_salt * lam_i
+# ==========================================================
+MC_COEFFS = {
+    #        lam0: (a, b, c)              A: (p, q, r)               B
+    'K':   ((0.003046, 1.261,  40.70), (0.00535, 0.9316, 22.59), 1.5),
+    'Na':  ((0.003763, 0.8770, 26.23), (0.00027, 1.141,  32.07), 1.7),
+    'Mg':  ((0.01068,  1.695,  57.16), (0.02453, 1.915,  80.50), 2.1),
+    'SO4': ((0.01037,  2.838,  82.37), (0.03324, 5.889,  193.5), 2.6),
+    'Cl':  ((0.003817, 1.337,  40.99), (0.00613, 0.9469, 22.01), 1.5),
+}
+
+def mccleskey_lambda(ion, I, T_C):
+    """Ionic molar conductivity lam_i(T, I) per McCleskey (2011) Table 1."""
+    (a, b, c), (p, q, r), B = MC_COEFFS[ion]
+    T_C = np.asarray(T_C, dtype=float)
+    sqrt_I = np.sqrt(np.asarray(I, dtype=float))
+    lam0 = a * T_C**2 + b * T_C + c
+    A = p * T_C**2 + q * T_C + r
+    return lam0 - A * sqrt_I / (1.0 + B * sqrt_I)
+
+def mccleskey_kappa_k2so4(T_K, molality, I):
+    """Specific conductivity (mS/cm) of K2SO4 via ionic additivity:
+    kappa = m * (2*lam_K + lam_SO4), evaluated at the solution's I."""
+    T_C = np.asarray(T_K, dtype=float) - 273.15
+    lam_K = mccleskey_lambda('K', I, T_C)
+    lam_SO4 = mccleskey_lambda('SO4', I, T_C)
+    return np.asarray(molality, dtype=float) * (2.0 * lam_K + lam_SO4)
+
+# ==========================================================
+# 3. STATISTICAL SCORING ENGINE
+# ==========================================================
+def compute_metrics(real, predicted, molality, stable_threshold=PCT_STABLE_MOLALITY):
+    real = np.asarray(real, dtype=float)
+    predicted = np.asarray(predicted, dtype=float)
+    molality = np.asarray(molality, dtype=float)
+    resid = predicted - real
+
+    rmse = np.sqrt(np.mean(resid**2))
+    mae = np.mean(np.abs(resid))
+    ss_res = np.sum(resid**2)
+    ss_tot = np.sum((real - real.mean())**2)
+    r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else np.nan
+    slope, intercept = np.polyfit(real, predicted, 1)
+
+    # percent metrics only where kappa is not vanishingly small
+    stable = molality > stable_threshold
+    pct = 100.0 * resid[stable] / real[stable]
+    return {'rmse': rmse, 'mae': mae, 'r2': r2, 'slope': slope,
+            'bias_pct': pct.mean(), 'mad_pct': np.abs(pct).mean(),
+            'max_pct': np.abs(pct).max(), 'n': len(real), 'n_stable': stable.sum()}
+
+# ==========================================================
+# 4. HEAD-TO-HEAD RUN
+# ==========================================================
+Z_framework = np.asarray(Z_yours_at_k2so4, dtype=float)
+Z_mccleskey = mccleskey_kappa_k2so4(T_k2so4, M_k2so4, I_k2so4)
+
+m_yours = compute_metrics(Z_k2so4_real, Z_framework, M_k2so4)
+m_mcc = compute_metrics(Z_k2so4_real, Z_mccleskey, M_k2so4)
+
+print("=" * 72)
+print(f"   K2SO4 HELD-OUT BENCHMARK  (n = {m_yours['n']}, "
+      f"pct stats on m > {PCT_STABLE_MOLALITY}: n = {m_yours['n_stable']})")
+print("=" * 72)
+print(f"{'Metric':<28}{'Your framework':<22}{'McCleskey (2011)':<22}")
+print("-" * 72)
+print(f"{'R2 vs 1:1':<28}{m_yours['r2']:<22.5f}{m_mcc['r2']:<22.5f}")
+print(f"{'RMSE (mS/cm)':<28}{m_yours['rmse']:<22.4f}{m_mcc['rmse']:<22.4f}")
+print(f"{'MAE (mS/cm)':<28}{m_yours['mae']:<22.4f}{m_mcc['mae']:<22.4f}")
+print(f"{'Best-fit slope':<28}{m_yours['slope']:<22.4f}{m_mcc['slope']:<22.4f}")
+print(f"{'Mean signed dev (%)':<28}{m_yours['bias_pct']:<+22.2f}{m_mcc['bias_pct']:<+22.2f}")
+print(f"{'Mean abs dev (%)':<28}{m_yours['mad_pct']:<22.2f}{m_mcc['mad_pct']:<22.2f}")
+print(f"{'Max abs dev (%)':<28}{m_yours['max_pct']:<22.2f}{m_mcc['max_pct']:<22.2f}")
+print("-" * 72)
+if m_yours['rmse'] < m_mcc['rmse']:
+    print(f"SUCCESS: framework beats McCleskey by "
+          f"{m_mcc['rmse'] - m_yours['rmse']:.4f} mS/cm RMSE on this dataset.")
+else:
+    print(f"TARGET: framework trails McCleskey by "
+          f"{m_yours['rmse'] - m_mcc['rmse']:.4f} mS/cm RMSE. Keep tuning Cell 1.")
+print("=" * 72)
+
+# residual structure of both models
+stable = M_k2so4 > PCT_STABLE_MOLALITY
+dev_yours = 100.0 * (Z_framework - Z_k2so4_real) / Z_k2so4_real
+dev_mcc = 100.0 * (Z_mccleskey - Z_k2so4_real) / Z_k2so4_real
+if stable.sum() > 3:
+    r_m_y, _ = sstats.pearsonr(M_k2so4[stable], dev_yours[stable])
+    r_t_y, _ = sstats.pearsonr(T_k2so4[stable], dev_yours[stable])
+    r_m_m, _ = sstats.pearsonr(M_k2so4[stable], dev_mcc[stable])
+    r_t_m, _ = sstats.pearsonr(T_k2so4[stable], dev_mcc[stable])
+    print(f"Residual correlations (m > {PCT_STABLE_MOLALITY}):")
+    print(f"  yours:     r(molality) = {r_m_y:+.3f}   r(T) = {r_t_y:+.3f}")
+    print(f"  McCleskey: r(molality) = {r_m_m:+.3f}   r(T) = {r_t_m:+.3f}")
+
+# ==========================================================
+# 5. FIGURES
+# ==========================================================
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5.5))
+
+# Plot A: parity
+max_limit = max(Z_k2so4_real.max(), Z_framework.max(), Z_mccleskey.max()) * 1.05
+lims = [0, max_limit]
+ax1.plot(lims, lims, ls='--', color='#555555', lw=1.2, label='1:1 line')
+ax1.scatter(Z_k2so4_real, Z_framework, color='#1f77b4', marker='o', s=35,
+            edgecolors='black', linewidths=0.5, label='Your framework', zorder=4)
+ax1.scatter(Z_k2so4_real, Z_mccleskey, color='#ff7f0e', marker='X', s=45,
+            edgecolors='black', linewidths=0.5, label='McCleskey (2011)', zorder=3)
+box = (f"Framework:\n  $R^2$ = {m_yours['r2']:.4f}\n  RMSE = {m_yours['rmse']:.3f}\n\n"
+       f"McCleskey:\n  $R^2$ = {m_mcc['r2']:.4f}\n  RMSE = {m_mcc['rmse']:.3f}")
+ax1.text(0.05, 0.95, box, transform=ax1.transAxes, va='top', ha='left', fontsize=9,
+         bbox=dict(boxstyle='round,pad=0.5', facecolor='white', edgecolor='#cccccc', alpha=0.9))
+ax1.set_xlim(lims); ax1.set_ylim(lims)
+ax1.set_xlabel(r'Measured conductivity (mS cm$^{-1}$)')
+ax1.set_ylabel(r'Predicted conductivity (mS cm$^{-1}$)')
+ax1.set_title(r'K$_2$SO$_4$ held-out: parity comparison')
+ax1.set_aspect('equal')
+ax1.legend(loc='lower right')
+ax1.grid(True, linestyle=':', alpha=0.5)
+
+# Plot B: residuals vs molality
+ax2.axhspan(-5, 5, color='#e0e0e0', alpha=0.4, label=r'$\pm$5% window')
+order = np.argsort(M_k2so4)
+ax2.plot(M_k2so4[order], dev_yours[order], color='#1f77b4', marker='o', ls='-',
+         lw=1, ms=5, label='Your framework', zorder=4)
+ax2.plot(M_k2so4[order], dev_mcc[order], color='#ff7f0e', marker='X', ls=':',
+         lw=1, ms=6, label='McCleskey (2011)', zorder=3)
+ax2.axhline(0, color='black', lw=1.0)
+ax2.set_xscale('log')
+ax2.set_xlabel(r'K$_2$SO$_4$ molality (mol kg$^{-1}$)')
+ax2.set_ylabel('Signed deviation (%)')
+ax2.set_title('Residuals vs concentration')
+ax2.legend(loc='best')
+ax2.grid(True, which='both', linestyle=':', alpha=0.3)
+
+plt.tight_layout()
+save_fig(fig, 'framework_vs_mccleskey_head_to_head')
+plt.show()
