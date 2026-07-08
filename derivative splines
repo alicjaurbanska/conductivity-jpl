@@ -1,0 +1,169 @@
+# =====================================================================
+# Cell 3 -- Derivative splines
+# =====================================================================
+import numpy as np, pandas as pd
+import matplotlib.pyplot as plt
+from scipy.interpolate import RectBivariateSpline
+from scipy.stats import pearsonr
+
+SQRT_I = True   # fit splines against sqrt(I) instead of I  <-- key switch
+CSV = 'empirical_conductivity_library.csv'
+
+# ---- McCleskey (2011) Table 1, lam = lam0(T) - A(T)*sqrt(I)/(1+B*sqrt(I))
+# all quadratic coefficients positive (verified against limiting
+# conductivities at 25 C and against the raw electrolyte data)
+MC = {
+ 'K':  ((0.003046,1.261,40.70),(0.00535,0.9316,22.59),1.5),
+ 'Na': ((0.003763,0.8770,26.23),(0.00027,1.141,32.07),1.7),
+ 'Mg': ((0.01068,1.695,57.16),(0.02453,1.915,80.50),2.1),
+ 'SO4':((0.01037,2.838,82.37),(0.03324,5.889,193.5),2.6),
+ 'Cl': ((0.003817,1.337,40.99),(0.00613,0.9469,22.01),1.5),
+}
+def mccleskey_lambda(ion, I, T, dI=False):
+    (a,b,c),(p,q,r),B = MC[ion]
+    T = np.asarray(T, float); I = np.asarray(I, float); s = np.sqrt(I)
+    A = p*T**2 + q*T + r
+    if dI:                      # analytic d(lambda)/dI, always negative
+        return -A/(2*s*(1+B*s)**2)
+    return (a*T**2 + b*T + c) - A*s/(1+B*s)
+
+# ---------- rebuild deconvolution chain ----------
+df = pd.read_csv(CSV)
+d  = df[df.Pressure_MPa == 0.1].copy()
+def salt(name, f):
+    s = d[d.Salt == name].copy()
+    s['I'] = f*s.Molality_molkg
+    s['Lam'] = s.Conductivity_mScm/s.Molality_molkg
+    return s
+kcl, nacl, mgcl2, na2so4, k2so4 = salt('KCl',1), salt('NaCl',1), salt('MgCl2',3), salt('Na2SO4',3), salt('K2SO4',3)
+
+tK = mccleskey_lambda('K', kcl.I, kcl.Temperature_C) / (
+     mccleskey_lambda('K', kcl.I, kcl.Temperature_C) + mccleskey_lambda('Cl', kcl.I, kcl.Temperature_C))
+kcl['lam_K'], kcl['lam_Cl'] = tK*kcl.Lam, (1-tK)*kcl.Lam
+
+class IonSpline:
+    """RectBivariateSpline wrapper; handles the sqrt(I) coordinate and
+    chain-rule conversion of derivatives back to d/dI."""
+    def __init__(self, sub, col):
+        Iv = np.sort(sub.I.unique()); Tv = np.sort(sub.Temperature_C.unique())
+        Z  = sub.pivot_table(index='I', columns='Temperature_C', values=col).loc[Iv, Tv].values
+        n  = Z.size
+        x  = np.sqrt(Iv) if SQRT_I else Iv
+        self.sp = RectBivariateSpline(x, Tv, Z, kx=3, ky=3, s=n - np.sqrt(2*n))
+        self.bb = (Iv.min(), Iv.max(), Tv.min(), Tv.max())
+        self.train = (Iv, Tv, Z)
+    def _x(self, I): return np.sqrt(I) if SQRT_I else np.asarray(I, float)
+    def inhull(self, I, T):
+        b = self.bb; return (I >= b[0]) & (I <= b[1]) & (T >= b[2]) & (T <= b[3])
+    def ev(self, I, T): return self.sp.ev(self._x(I), T)
+    def ev_or_nan(self, I, T):
+        out = self.ev(I, T); return np.where(self.inhull(np.asarray(I), np.asarray(T)), out, np.nan)
+    def dT(self, I, T): return self.sp.ev(self._x(I), T, dy=1)
+    def dI(self, I, T):
+        g = self.sp.ev(self._x(I), T, dx=1)
+        return g/(2*np.sqrt(I)) if SQRT_I else g       # chain rule
+    def d2I(self, I, T):
+        if not SQRT_I: return self.sp.ev(self._x(I), T, dx=2)
+        u = np.sqrt(I)
+        return self.sp.ev(u, T, dx=2)/(4*I) - self.sp.ev(u, T, dx=1)/(4*I*u)
+    def dIdT(self, I, T):
+        g = self.sp.ev(self._x(I), T, dx=1, dy=1)
+        return g/(2*np.sqrt(I)) if SQRT_I else g       # cross derivative chain rule
+
+ion = {}
+ion['K']  = IonSpline(kcl, 'lam_K');  ion['Cl'] = IonSpline(kcl, 'lam_Cl')
+nacl = nacl[ion['Cl'].inhull(nacl.I, nacl.Temperature_C)].copy()
+nacl['lam_Na'] = nacl.Lam - ion['Cl'].ev(nacl.I, nacl.Temperature_C)
+ion['Na'] = IonSpline(nacl, 'lam_Na')
+mgcl2 = mgcl2[ion['Cl'].inhull(mgcl2.I, mgcl2.Temperature_C)].copy()
+mgcl2['lam_Mg'] = mgcl2.Lam - 2*ion['Cl'].ev(mgcl2.I, mgcl2.Temperature_C)
+ion['Mg'] = IonSpline(mgcl2, 'lam_Mg')
+na2so4 = na2so4[ion['Na'].inhull(na2so4.I, na2so4.Temperature_C)].copy()
+na2so4['lam_SO4'] = na2so4.Lam - 2*ion['Na'].ev(na2so4.I, na2so4.Temperature_C)
+ion['SO4'] = IonSpline(na2so4, 'lam_SO4')
+
+# ---------- physical inspection of derivatives ----------
+print('=== derivative diagnostics (dense grid inside each ion hull) ===')
+rows = []
+for name, s in ion.items():
+    b = s.bb
+    Ig = np.geomspace(b[0], b[1], 200); Tg = np.linspace(b[2], b[3], 100)
+    II, TT = np.meshgrid(Ig, Tg, indexing='ij')
+    lam, dT, dI, d2 = s.ev(II,TT), s.dT(II,TT), s.dI(II,TT), s.d2I(II,TT)
+    tc = dT/lam*100
+    rows.append([name, lam.min(), (lam < 0).mean()*100, (dT > 0).mean()*100,
+                 np.percentile(tc,1), np.percentile(tc,99), (dI < 0).mean()*100, (d2 > 0).mean()*100])
+print(pd.DataFrame(rows, columns=['ion','lam_min','%lam<0','%dT>0','tcoef_p1 (%/C)','tcoef_p99 (%/C)','%dI<0','%d2I>0']).round(2).to_string(index=False))
+print('physics requires: lam>0, dT>0 (approx 1-3 %/C), dI<0, d2I>0 everywhere')
+
+# ---------- plot derivative splines ----------
+print('\n=== Plotting derivative diagnostic surfaces ===')
+for name, s in ion.items():
+    b = s.bb
+    # Plotting grid (slightly lower res for responsive 3D rendering)
+    Tg, Ig = np.meshgrid(np.linspace(b[2], b[3], 60), np.geomspace(b[0], b[1], 60))
+
+    lam_plot = s.ev(Ig, Tg)
+    dT_plot = s.dT(Ig, Tg)
+    dI_plot = s.dI(Ig, Tg)
+    d2_plot = s.d2I(Ig, Tg)
+    dIdT_plot = s.dIdT(Ig, Tg)
+
+    # Increased width to 22 to accommodate the 5th plot
+    fig = plt.figure(figsize=(22, 4))
+    fig.suptitle(f'Ion: {name} - Spline Derivatives Diagnostics', fontsize=14, y=1.05)
+
+    ax1 = fig.add_subplot(151, projection='3d')
+    ax1.plot_surface(Tg, Ig, lam_plot, cmap='viridis', edgecolor='none')
+    ax1.set_title('$\lambda$ (>0)')
+    ax1.set_xlabel('T (C)'); ax1.set_ylabel('I')
+
+    ax2 = fig.add_subplot(152, projection='3d')
+    ax2.plot_surface(Tg, Ig, dT_plot, cmap='plasma', edgecolor='none')
+    ax2.set_title('$d\lambda/dT$ (>0)')
+    ax2.set_xlabel('T (C)'); ax2.set_ylabel('I')
+
+    ax3 = fig.add_subplot(153, projection='3d')
+    ax3.plot_surface(Tg, Ig, dI_plot, cmap='coolwarm', edgecolor='none')
+    ax3.set_title('$d\lambda/dI$ (<0)')
+    ax3.set_xlabel('T (C)'); ax3.set_ylabel('I')
+
+    ax4 = fig.add_subplot(154, projection='3d')
+    ax4.plot_surface(Tg, Ig, d2_plot, cmap='magma', edgecolor='none')
+    ax4.set_title('$d^2\lambda/dI^2$ (>0)')
+    ax4.set_xlabel('T (C)'); ax4.set_ylabel('I')
+
+    ax5 = fig.add_subplot(155, projection='3d')
+    ax5.plot_surface(Tg, Ig, dIdT_plot, cmap='cividis', edgecolor='none')
+    ax5.set_title('$d^2\lambda/(dI\,dT)$')
+    ax5.set_xlabel('T (C)'); ax5.set_ylabel('I')
+
+    plt.tight_layout()
+
+    # Save files to Colab working directory
+    plt.savefig(f'{name}_derivatives_diagnostic.pdf', bbox_inches='tight')
+    plt.savefig(f'{name}_derivatives_diagnostic.png', bbox_inches='tight', dpi=300)
+
+    plt.show()
+
+# ---------- K2SO4 held-out validation + McCleskey comparison ----------
+ok = ion['K'].inhull(k2so4.I, k2so4.Temperature_C) & ion['SO4'].inhull(k2so4.I, k2so4.Temperature_C)
+v = k2so4[ok].copy()
+v['pred_spline'] = (2*ion['K'].ev(v.I, v.Temperature_C) + ion['SO4'].ev(v.I, v.Temperature_C))*v.Molality_molkg
+v['pred_mc']     = (2*mccleskey_lambda('K', v.I, v.Temperature_C)
+                    +  mccleskey_lambda('SO4', v.I, v.Temperature_C))*v.Molality_molkg
+
+def report(y, p, m, label):
+    r = p - y; keep = m > 0.01
+    sd = (p[keep] - y[keep])/y[keep]*100
+    sl, _ = np.polyfit(y, p, 1)
+    R2 = 1 - np.sum(r**2)/np.sum((y - y.mean())**2)
+    print('%-28s n=%d RMSE=%.3f MAE=%.3f R2=%.4f slope=%.3f | m>0.01: signed %+.1f%% MAD %.1f%% max %.1f%%' %
+          (label, len(y), np.sqrt((r**2).mean()), np.abs(r).mean(), R2, sl, sd.mean(), np.abs(sd).mean(), np.abs(sd).max()))
+print('\n=== K2SO4 held-out (%d of 42 points in-hull) ===' % len(v))
+report(v.Conductivity_mScm.values, v.pred_spline.values, v.Molality_molkg.values, 'spline additivity')
+report(v.Conductivity_mScm.values, v.pred_mc.values,     v.Molality_molkg.values, 'McCleskey Eq.8 (unspeciated)')
+hi = v[v.Molality_molkg > 0.01]
+sd = (hi.pred_spline - hi.Conductivity_mScm)/hi.Conductivity_mScm*100
+print('spline residual structure: r(molality)=%.3f, r(T)=%.3f' %
+      (pearsonr(hi.Molality_molkg, sd)[0], pearsonr(hi.Temperature_C, sd)[0]))
