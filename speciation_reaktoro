@@ -1,0 +1,72 @@
+from reaktoro import *
+
+# phreeqc.dat = ion-association model, same philosophy McCleskey used (WATEQ4F).
+db = PhreeqcDatabase("phreeqc.dat")
+
+# Build ONE system spanning every element your salts need, then reuse it.
+solution = AqueousPhase(speciate("H O Cl K Mg Na S Ca"))
+solution.set(ActivityModelPhreeqc(db))   # match PHREEQC's own activity model
+system = ChemicalSystem(db, solution)
+
+# Salt -> (species, moles per mole of salt), PHREEQC species names.
+SALT_DISSOCIATION = {
+    'KCl':    [('K+', 1), ('Cl-', 1)],
+    'NaCl':   [('Na+', 1), ('Cl-', 1)],
+    'MgCl2':  [('Mg+2', 1), ('Cl-', 2)],
+    'Na2SO4': [('Na+', 2), ('SO4-2', 1)],
+    'K2SO4':  [('K+', 2), ('SO4-2', 1)],
+}
+FREE_IONS = ['K+', 'Cl-', 'Na+', 'Mg+2', 'SO4-2']
+PAIR_IONS = ['KSO4-', 'NaSO4-', 'MgSO4', 'CaSO4']
+FORMAL_I_FACTOR = {'KCl': 1.0, 'NaCl': 1.0, 'MgCl2': 3.0, 'Na2SO4': 3.0, 'K2SO4': 3.0}
+
+
+def speciate_salt(salt, molality, T_C, P_MPa=0.1):
+    """Equilibrate `molality` mol/kg of `salt` at T_C (C), P_MPa (MPa).
+    Returns dict of free-ion + pair molalities, effective I, formal I."""
+    state = ChemicalState(system)
+    state.temperature(T_C, "celsius")
+    state.pressure(P_MPa * 10.0, "bar")   # 0.1 MPa = 1 bar
+    state.set("H2O", 1.0, "kg")           # 1 kg water -> mol amounts are molal
+    for sp, nu in SALT_DISSOCIATION[salt]:
+        state.set(sp, nu * molality, "mol")
+
+    equilibrate(state)
+    aprops = AqueousProps(state)
+
+    def molal(name):
+        try:
+            return float(aprops.speciesMolality(name))
+        except Exception:
+            return float('nan')
+
+    out = {ion: molal(ion) for ion in FREE_IONS}
+    for pair in PAIR_IONS:
+        m = molal(pair)
+        if m == m and m > 0:
+            out[pair] = m
+    out['I_eff'] = float(aprops.ionicStrengthEffective())
+    out['I_formal'] = molality * FORMAL_I_FACTOR[salt]
+    return out
+
+
+if __name__ == "__main__":
+    # One-time check that species names match the database.
+    print("Aqueous species in system:")
+    print("  ", [s.name() for s in system.species()])
+    print()
+
+    print("--- KCl, m=0.5, 25 C (expect ~no pairing) ---")
+    r = speciate_salt('KCl', 0.5, 25.0)
+    print(f"free K+     = {r['K+']:.4f}   (input 0.5)")
+    print(f"free Cl-    = {r['Cl-']:.4f}")
+    print(f"I_eff       = {r['I_eff']:.4f}")
+    print(f"I_formal    = {r['I_formal']:.4f}   ratio {r['I_eff']/r['I_formal']:.3f}")
+
+    print("\n--- K2SO4, m=0.5, 25 C (expect real pairing) ---")
+    r = speciate_salt('K2SO4', 0.5, 25.0)
+    print(f"free K+     = {r['K+']:.4f}   (formal 1.0)")
+    print(f"free SO4-2  = {r['SO4-2']:.4f}   (formal 0.5)")
+    print(f"KSO4- pair  = {r.get('KSO4-', 0):.4f}")
+    print(f"I_eff       = {r['I_eff']:.4f}")
+    print(f"I_formal    = {r['I_formal']:.4f}   ratio {r['I_eff']/r['I_formal']:.3f}")
