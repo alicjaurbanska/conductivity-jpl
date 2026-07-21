@@ -1,0 +1,68 @@
+# Cortes et al. (2026) - Benchtop conductivity measurements
+#
+# Instrument: benchtop conductivity probe (Gamry impedance analyzed separately).
+# Reference: See Cortes et al. (2026) manuscript for full methodology.
+#
+# Data description:
+#   - Temperatures 5, 10, 20 C; atmospheric pressure (0.1 MPa)
+#   - KCl, NaCl, Na2SO4 (subset used here)
+#   - Concentrations were prepared per-litre in the lab but the reported figure
+#     is molality (mol/kg): values are used directly as concentration_molal,
+#     with NO molar->molal conversion.
+#
+# CAVEAT: one KCl row (10 C, 1.5) is a flagged transcription duplicate - see notes.
+#
+# Columns:
+#   compound: Chemical formula or mixture notation (mixtures use A:B_r:r ratio form)
+#   concentration_molal: Molality (mol/kg_H2O)
+#   temperature_C: Temperature (Celsius)
+#   temperature_K: Temperature (Kelvin)
+#   pressure_MPa: Pressure (MPa); 0.1 MPa = atmospheric
+#   conductivity_Sm: Electrical conductivity (S/m)   [= reported mS/cm divided by 10]
+#   replicate: Replicate number (1 if source reports a single value)
+#   source: Data source tag
+#   notes: Additional notes / provenance flags
+#
+compound,concentration_molal,temperature_C,temperature_K,pressure_MPa,conductivity_Sm,replicate,source,notes
+KCl,0.5,5.0,278.15,0.1,4.151,1,Cortes2026,"0.5 M/L; value is molality, used directly (no conversion)"
+KCl,0.75,5.0,278.15,0.1,5.856,1,Cortes2026,"0.75 M/L; value is molality, used directly (no conversion)"
+KCl,1.0,5.0,278.15,0.1,7.767,1,Cortes2026,"1.0 M/L; value is molality, used directly (no conversion)"
+KCl,1.5,5.0,278.15,0.1,11.8,1,Cortes2026,"1.5 M/L; value is molality, used directly (no conversion)"
+KCl,0.5,10.0,283.15,0.1,4.678,1,Cortes2026,"0.5 M/L; value is molality, used directly (no conversion)"
+KCl,0.75,10.0,283.15,0.1,6.429,1,Cortes2026,"0.75 M/L; value is molality, used directly (no conversion)"
+KCl,1.0,10.0,283.15,0.1,8.598,1,Cortes2026,"1.0 M/L; value is molality, used directly (no conversion)"
+KCl,1.5,10.0,283.15,0.1,,1,Cortes2026,"FLAGGED: dup of 1.0 mol/L value (transcription error); voided; value is molality, used directly (no conversion)"
+KCl,0.5,20.0,293.15,0.1,5.588,1,Cortes2026,"0.5 M/L; value is molality, used directly (no conversion)"
+KCl,0.75,20.0,293.15,0.1,7.827,1,Cortes2026,"0.75 M/L; value is molality, used directly (no conversion)"
+KCl,1.0,20.0,293.15,0.1,10.333,1,Cortes2026,"1.0 M/L; value is molality, used directly (no conversion)"
+KCl,1.5,20.0,293.15,0.1,15.107,1,Cortes2026,"1.5 M/L; value is molality, used directly (no conversion)"
+Na2SO4,0.5,5.0,278.15,0.1,3.747,1,Cortes2026,"0.5 M/L; value is molality, used directly (no conversion)"
+Na2SO4,0.75,5.0,278.15,0.1,2.198,1,Cortes2026,"0.75 M/L; value is molality, used directly (no conversion)"
+Na2SO4,0.5,10.0,283.15,0.1,4.114,1,Cortes2026,"0.5 M/L; value is molality, used directly (no conversion)"
+Na2SO4,0.75,10.0,283.15,0.1,3.977,1,Cortes2026,"0.75 M/L; value is molality, used directly (no conversion)"
+Na2SO4,0.5,20.0,293.15,0.1,5.783,1,Cortes2026,"0.5 M/L; value is molality, used directly (no conversion)"
+Na2SO4,0.75,20.0,293.15,0.1,7.574,1,Cortes2026,"0.75 M/L; value is molality, used directly (no conversion)"
+NaCl,0.5,20.0,293.15,0.1,4.368,1,Cortes2026,"0.5 M/L, replicate 1; value is molality, used directly (no conversion)"
+NaCl,0.5,20.0,293.15,0.1,4.365,2,Cortes2026,"0.5 M/L, replicate 2; value is molality, used directly (no conversion)"
+NaCl,0.5,20.0,293.15,0.1,4.366,3,Cortes2026,"0.5 M/L, replicate 3; value is molality, used directly (no conversion)"
+NaCl,0.5,20.0,293.15,0.1,4.586,4,Cortes2026,"0.5 M/L, replicate 4; value is molality, used directly (no conversion)"
+NaCl,0.5,20.0,293.15,0.1,4.579,5,Cortes2026,"0.5 M/L, replicate 5; value is molality, used directly (no conversion)"
+NaCl,0.5,20.0,293.15,0.1,4.576,6,Cortes2026,"0.5 M/L, replicate 6; value is molality, used directly (no conversion)"
+NaCl,0.75,20.0,293.15,0.1,6.354,1,Cortes2026,"0.75 M/L, replicate 1; value is molality, used directly (no conversion)"
+NaCl,0.75,20.0,293.15,0.1,6.318,2,Cortes2026,"0.75 M/L, replicate 2; value is molality, used directly (no conversion)"
+NaCl,0.75,20.0,293.15,0.1,6.326,3,Cortes2026,"0.75 M/L, replicate 3; value is molality, used directly (no conversion)"
+NaCl,0.75,20.0,293.15,0.1,6.468999999999999,4,Cortes2026,"0.75 M/L, replicate 4; value is molality, used directly (no conversion)"
+NaCl,0.75,20.0,293.15,0.1,6.4590000000000005,5,Cortes2026,"0.75 M/L, replicate 5; value is molality, used directly (no conversion)"
+NaCl,0.75,20.0,293.15,0.1,6.456999999999999,6,Cortes2026,"0.75 M/L, replicate 6; value is molality, used directly (no conversion)"
+NaCl,1.0,20.0,293.15,0.1,8.027,1,Cortes2026,"1.0 M/L, replicate 1; value is molality, used directly (no conversion)"
+NaCl,1.0,20.0,293.15,0.1,8.033,2,Cortes2026,"1.0 M/L, replicate 2; value is molality, used directly (no conversion)"
+NaCl,1.0,20.0,293.15,0.1,8.039,3,Cortes2026,"1.0 M/L, replicate 3; value is molality, used directly (no conversion)"
+NaCl,1.0,20.0,293.15,0.1,8.399,4,Cortes2026,"1.0 M/L, replicate 4; value is molality, used directly (no conversion)"
+NaCl,1.0,20.0,293.15,0.1,8.431000000000001,5,Cortes2026,"1.0 M/L, replicate 5; value is molality, used directly (no conversion)"
+NaCl,1.0,20.0,293.15,0.1,8.429,6,Cortes2026,"1.0 M/L, replicate 6; value is molality, used directly (no conversion)"
+NaCl,1.5,20.0,293.15,0.1,11.45,1,Cortes2026,"1.5 M/L, replicate 1; value is molality, used directly (no conversion)"
+NaCl,1.5,20.0,293.15,0.1,11.42,2,Cortes2026,"1.5 M/L, replicate 2; value is molality, used directly (no conversion)"
+NaCl,1.5,20.0,293.15,0.1,11.43,3,Cortes2026,"1.5 M/L, replicate 3; value is molality, used directly (no conversion)"
+NaCl,1.5,20.0,293.15,0.1,11.63,4,Cortes2026,"1.5 M/L, replicate 4; value is molality, used directly (no conversion)"
+NaCl,1.5,20.0,293.15,0.1,11.66,5,Cortes2026,"1.5 M/L, replicate 5; value is molality, used directly (no conversion)"
+NaCl,1.5,20.0,293.15,0.1,11.68,6,Cortes2026,"1.5 M/L, replicate 6; value is molality, used directly (no conversion)"
