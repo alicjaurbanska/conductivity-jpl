@@ -1,0 +1,470 @@
+# Pan, Yong & Secco (2020, 2021) - Low-temperature, high-pressure conductivity
+#
+# References:
+#   Pan2020 (MgSO4): Pan, Y., Yong, W. & Secco, R.A. (2020), "Electrical
+#     Conductivity of Aqueous Magnesium Sulfate at High Pressure and Low
+#     Temperature With Application to Ganymede's Subsurface Ocean",
+#     Geophys. Res. Lett. 47, e2020GL090192. doi:10.1029/2020GL090192
+#   Pan2021 (NaCl): Pan, Y., Yong, W. & Secco, R.A. (2021), "Electrical
+#     Conductivity of Aqueous NaCl at High Pressure and Low Temperature:
+#     Application to Deep Subsurface Oceans of Icy Moons",
+#     Geophys. Res. Lett. 48, e2021GL094020. doi:10.1029/2021GL094020
+#   (Dept. of Earth Sciences, University of Western Ontario)
+#
+# Data description:
+#   - NaCl (Pan2021, 399 pts) and MgSO4 (Pan2020, 37 pts) at high pressure
+#     (to ~1.7 GPa) and low temperature (to -40 C) - the icy-ocean-relevant regime.
+#   - source column distinguishes Pan2020 vs Pan2021.
+#
+# CAVEAT: IAPWS-95 water-viscosity support (used by the Walden pressure channel)
+#   ends near 250 K and ~1000 MPa; rows beyond that are outside the current
+#   model coverage even though the measurements themselves are valid.
+#
+# Columns:
+#   compound: Chemical formula or mixture notation (mixtures use A:B_r:r ratio form)
+#   concentration_molal: Molality (mol/kg_H2O)
+#   temperature_C: Temperature (Celsius)
+#   temperature_K: Temperature (Kelvin)
+#   pressure_MPa: Pressure (MPa); 0.1 MPa = atmospheric
+#   conductivity_Sm: Electrical conductivity (S/m)   [= reported mS/cm divided by 10]
+#   replicate: Replicate number (1 if source reports a single value)
+#   source: Data source tag (Pan2020 | Pan2021)
+#   notes: Additional notes / provenance flags
+#
+compound,concentration_molal,temperature_C,temperature_K,pressure_MPa,conductivity_Sm,replicate,source,notes
+NaCl,0.1620017225,19.85,293.0,212.0,1.389,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.153656235,13.85,287.0,414.0,1.056,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1618501618,16.85,290.0,212.0,1.285,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.153656235,12.85,286.0,414.0,1.03,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1616988844,14.85,288.0,212.0,1.1960000000000002,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1533837683,9.85,283.0,414.0,0.955,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1615478895,12.85,286.0,212.0,1.134,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.153247897,7.85,281.0,414.0,0.912,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1613971764,9.85,283.0,212.0,1.079,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1531122661,4.85,278.0,414.0,0.836,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1612467442,7.85,281.0,212.0,1.011,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1529768752,2.85,276.0,414.0,0.769,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1610965921,4.85,278.0,212.0,0.905,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1527068103,-0.15,273.0,414.0,0.689,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1609467195,2.85,276.0,212.0,0.8300000000000001,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1525721351,-2.15,271.0,414.0,0.637,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1607971254,-0.15,273.0,212.0,0.743,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1524376973,-5.15,268.0,414.0,0.611,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.160647809,-2.15,271.0,212.0,0.686,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1524008450879553,-7.15,266.0,414.0,0.5309999999999999,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1604987701,-5.15,268.0,212.0,0.607,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1522217687832337,-10.15,263.0,414.0,0.135,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1603500072,-7.15,266.0,212.0,0.5589999999999999,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1521030753259531,-12.15,261.0,414.0,0.093,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1602015198,-10.15,263.0,212.0,0.521,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1520439350148489,-13.15,260.0,414.0,0.073,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1600533072,-12.15,261.0,212.0,0.465,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1519260658931484,-15.15,258.0,414.0,0.046,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1599053686,-15.15,258.0,212.0,0.387,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.173,-16.15,257.0,414.0,0.037,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.173,-18.15,255.0,212.0,0.03,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.1519260658931484,-15.15,258.0,414.0,0.0419999999999999,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.173,-20.15,253.0,212.0,0.017,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.1522217687832337,-10.15,263.0,414.0,0.159,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.173,-18.15,255.0,212.0,0.034,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.1523410144773543,-8.15,265.0,414.0,0.191,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1602851022806393,-8.15,265.0,212.0,0.64,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1525209231937799,-5.15,268.0,414.0,0.239,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.160464355671725,-5.15,268.0,212.0,0.72,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1527020866646418,-2.15,271.0,414.0,0.347,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1606449282847137,-2.15,271.0,212.0,0.788,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1528235630645288,-0.15,273.0,414.0,0.362,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1607660466564741,-0.15,273.0,212.0,0.8320000000000001,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1529456026553712,1.85,275.0,414.0,0.601,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1609488348059159,2.85,276.0,212.0,0.924,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.153006834345603,2.85,276.0,414.0,0.615,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1610714372898724,4.85,278.0,212.0,0.985,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1531297229204908,4.85,278.0,414.0,0.643,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1612564623392127,7.85,281.0,212.0,1.049,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1534394378830094,9.85,283.0,414.0,0.712,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1613805633029092,9.85,283.0,212.0,1.092,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1437008508,18.35,291.5,817.0,0.963,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1476247922,9.85,283.0,615.0,0.819,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1435815861,16.85,290.0,817.0,0.929,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.147498928,7.85,281.0,615.0,0.8390000000000001,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.143462519,14.85,288.0,817.0,0.8880000000000001,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1473732783,4.85,278.0,615.0,0.747,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1433436495,12.85,286.0,817.0,0.834,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.14712262,2.85,276.0,615.0,0.7070000000000001,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1432249768,10.85,284.0,817.0,0.7809999999999999,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.146882720652949,-0.15,273.0,615.0,0.473,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1431065003,9.85,283.0,817.0,0.756,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1467594487521185,-2.15,271.0,615.0,0.104,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1429882197,7.85,281.0,817.0,0.724,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1465755651343579,-5.15,268.0,615.0,0.064,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1428331647901122,4.85,278.0,817.0,0.3299999999999999,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1463929039450108,-8.15,265.0,615.0,0.034,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1427691565298783,3.85,277.0,817.0,0.227,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1462718052813214,-10.15,263.0,615.0,0.023,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1427052860895857,2.85,276.0,817.0,0.184,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1461512444441708,-12.15,261.0,615.0,0.013,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1426415531763391,1.85,275.0,817.0,0.137,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1462718052813214,-10.15,263.0,615.0,0.01,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1425144987643392,-0.15,273.0,817.0,0.071,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1463929039450108,-8.15,265.0,615.0,0.015,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1424511766847211,-1.15,272.0,817.0,0.052,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1465755651343579,-5.15,268.0,615.0,0.034,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1423879909704114,-2.15,271.0,817.0,0.038,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1466980179267287,-3.15,270.0,615.0,0.049,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1422620274867168,-4.15,269.0,817.0,0.023,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.146882720652949,-0.15,273.0,615.0,0.08,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1421992491442509,-5.15,268.0,817.0,0.018,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1470065414203872,1.85,275.0,615.0,0.108,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1421366060209239,-6.15,267.0,817.0,0.016,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1471933066294043,4.85,278.0,615.0,0.1639999999999999,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1422620274867168,-4.15,269.0,817.0,0.034,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1473813195306452,7.85,281.0,615.0,0.209,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1423879909704114,-2.15,271.0,817.0,0.046,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1476339576558677,11.85,285.0,615.0,0.7070000000000001,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1425144987643392,-0.15,273.0,817.0,0.066,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1478888462678223,15.85,289.0,615.0,0.8109999999999999,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.1427372041005685,3.35,276.5,817.0,0.107,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.8324513291,20.85,294.0,428.0,4.877000000000001,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1428331647901122,4.85,278.0,817.0,0.13,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.8316829212,18.85,292.0,428.0,4.674,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1429615959469501,6.85,280.0,817.0,0.1639999999999999,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.8301503532,15.85,289.0,428.0,4.442,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1431552837114079,9.85,283.0,817.0,0.222,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.828623423,11.85,285.0,428.0,4.184,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.1434481736265774,14.35,287.5,817.0,0.289,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.8278620625,9.85,283.0,428.0,4.068,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.173,21.85,295.0,817.0,0.2,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.8263435309,6.85,280.0,428.0,3.836,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.8006429598,13.85,287.0,608.0,3.918,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.8255863523,4.85,278.0,428.0,3.702,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.799222556,9.85,283.0,608.0,3.526,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.82483056,1.85,275.0,428.0,3.487,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.7978071831,6.35,279.5,608.0,3.316,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.8240761503,-0.15,273.0,428.0,3.3600000000000003,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.7963968144,2.85,276.0,608.0,3.061,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.8225714632,-3.15,270.0,428.0,3.146,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.794991423,-0.15,273.0,608.0,2.861,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.8218211784,-6.15,267.0,428.0,2.9170000000000003,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.7935331786120672,-4.15,269.0,608.0,1.512,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.8203247073,-9.15,264.0,428.0,2.701,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.7923488436721379,-7.15,266.0,608.0,1.161,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.8188336762,-13.15,260.0,428.0,2.411,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.7911701991876354,-10.15,263.0,608.0,0.865,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.8180901914,-15.15,258.0,428.0,2.274,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.790387580266668,-12.15,261.0,608.0,0.726,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.816607265,-18.15,255.0,428.0,2.011,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.7896074645804164,-14.15,259.0,608.0,0.596,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,-21.15,252.0,428.0,1.0539999999999998,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.788829841892019,-16.15,257.0,608.0,0.44,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,-23.65,249.5,428.0,0.751,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,-22.15,251.0,608.0,0.2,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,-25.15,248.0,428.0,0.606,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,-23.65,249.5,608.0,0.173,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,-28.15,245.0,428.0,0.319,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,-20.15,253.0,608.0,0.215,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,-31.15,242.0,428.0,0.183,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.789218342249004,-15.15,258.0,608.0,0.264,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,-34.15,239.0,428.0,0.122,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.790387580266668,-12.15,261.0,608.0,0.312,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,-37.15,236.0,428.0,0.063,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.7915624505762257,-9.15,264.0,608.0,0.363,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,-40.15,233.0,428.0,1.24e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.7931377658531159,-5.15,268.0,608.0,0.5429999999999999,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.8176110181891195,-16.15,257.0,428.0,0.767,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.7947232393086294,-1.15,272.0,608.0,0.6639999999999999,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.8187722366138441,-13.15,260.0,428.0,1.002,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.7959190613692991,1.85,275.0,608.0,0.768,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.8199390786930315,-10.15,263.0,428.0,1.2029999999999998,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.7971206807111011,4.85,278.0,608.0,0.909,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.8211115784250842,-7.15,266.0,428.0,1.395,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.7999472082637084,11.85,285.0,608.0,1.336,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.8218964049745261,-5.15,268.0,428.0,1.5550000000000002,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.8007606863069643,13.85,287.0,608.0,1.56,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.8238696062801328,-0.15,273.0,428.0,2.012,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.801168415319193,14.85,288.0,608.0,1.674,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.8266590660599087,6.85,280.0,428.0,3.607,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.8017812502208185,16.35,289.5,608.0,1.951,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.8278642822331306,9.85,283.0,428.0,3.827,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.8023955789553012,17.85,291.0,608.0,3.983,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.8290753902993142,12.85,286.0,428.0,4.118,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,18.85,292.0,1000.0,1.392,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.7778335163,17.85,291.0,800.0,3.599,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.901,15.85,289.0,1000.0,1.19,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.7770045508735712,15.85,289.0,800.0,1.93,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,12.85,286.0,1000.0,1.036,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.7755603253909814,12.35,285.5,800.0,1.396,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,9.85,283.0,1000.0,0.884,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.7745337439323254,9.85,283.0,800.0,1.17,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,7.85,281.0,1000.0,0.779,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.7733073199150657,6.85,280.0,800.0,0.926,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,5.85,279.0,1000.0,0.6990000000000001,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.7724930036555372,4.85,278.0,800.0,0.796,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,2.85,276.0,1000.0,0.596,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.7708722401031962,0.85,274.0,800.0,0.643,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,0.85,274.0,1000.0,0.5309999999999999,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.7692618944932638,-3.15,270.0,800.0,0.522,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,-2.15,271.0,1000.0,0.449,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.7676618789159123,-7.15,266.0,800.0,0.432,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,-5.15,268.0,1000.0,0.374,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.7664685940103413,-10.15,263.0,800.0,0.374,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,-9.15,264.0,1000.0,3.2000000000000005e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.765281034569822,-13.15,260.0,800.0,0.3399999999999999,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,-11.15,262.0,1000.0,1.26e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.7640991646264242,-16.15,257.0,800.0,0.24,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,-13.15,260.0,1000.0,8.17e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,-19.15,254.0,800.0,0.182,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,-9.15,264.0,1000.0,4.03e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,-21.65,251.5,800.0,2.33e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,-5.15,268.0,1000.0,0.000208,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,-24.15,249.0,800.0,5.54e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,-2.15,271.0,1000.0,0.0012,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,-26.65,246.5,800.0,4.4e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,1.85,275.0,1000.0,0.483,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,-19.15,254.0,800.0,6.939999999999999e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,4.85,278.0,1000.0,0.557,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.7668657176975037,-9.15,264.0,800.0,0.27,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,7.85,281.0,1000.0,0.658,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.7676618789159123,-7.15,266.0,800.0,0.337,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,9.85,283.0,1000.0,0.726,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.7684606009047826,-5.15,268.0,800.0,0.378,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,13.35,286.5,1000.0,0.8699999999999999,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.770065770573921,-1.15,272.0,800.0,0.486,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,16.35,289.5,1000.0,1.0,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.7708722401031962,0.85,274.0,800.0,0.5519999999999999,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,19.85,293.0,1000.0,1.162,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.7720868312389365,3.85,277.0,800.0,0.667,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,19.35,292.5,1436.0,0.631,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.773715466562143,7.85,281.0,800.0,0.8300000000000001,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,17.85,291.0,1436.0,0.564,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.7745337439323254,9.85,283.0,800.0,0.948,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,14.85,288.0,1436.0,0.471,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.7759721244605087,13.35,286.5,800.0,1.178,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,11.85,285.0,1436.0,0.408,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.7790820321002286,20.85,294.0,800.0,1.866,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,0.901,9.85,283.0,1436.0,0.362,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,19.85,293.0,1214.0,0.966,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,7.85,281.0,1436.0,0.319,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,17.85,291.0,1214.0,0.8560000000000001,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,5.85,279.0,1436.0,1.54e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,14.85,288.0,1214.0,0.738,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,3.85,277.0,1436.0,9.82e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,11.85,285.0,1214.0,0.641,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,1.85,275.0,1436.0,5.45e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,10.35,283.5,1214.0,0.5740000000000001,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,-0.15,273.0,1436.0,3.54e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,7.85,281.0,1214.0,0.5,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,1.85,275.0,1436.0,6.13e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,4.85,278.0,1214.0,0.423,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,3.85,277.0,1436.0,8.65e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,2.85,276.0,1214.0,0.376,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,7.35,280.5,1436.0,2.26e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,-1.15,272.0,1214.0,1.51e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,9.85,283.0,1436.0,5.0100000000000005e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,-4.15,269.0,1214.0,7.04e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,11.85,285.0,1436.0,0.0001,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,-6.15,267.0,1214.0,3.78e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,21.35,294.5,1436.0,0.496,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,-7.65,265.5,1214.0,3.06e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,21.35,294.5,1666.0,0.404,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,-3.15,270.0,1214.0,8.14e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,18.85,292.0,1666.0,0.343,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,-1.15,272.0,1214.0,1.34e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,16.85,290.0,1666.0,0.31,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,0.85,274.0,1214.0,2.56e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,13.85,287.0,1666.0,0.2759999999999999,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,3.85,277.0,1214.0,6.75e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,11.85,285.0,1666.0,1.48e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,6.35,279.5,1214.0,0.000269,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,9.85,283.0,1666.0,7.6e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,12.35,285.5,1214.0,0.544,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,7.85,281.0,1666.0,4.5500000000000005e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,14.85,288.0,1214.0,0.627,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,6.85,280.0,1666.0,3.88e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,17.85,291.0,1214.0,0.706,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,8.85,282.0,1666.0,5.14e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,18.85,292.0,1214.0,0.728,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,10.85,284.0,1666.0,6.9e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,19.35,292.5,1214.0,0.743,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,0.901,12.85,286.0,1666.0,1.27e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,2.018249048,21.85,295.0,140.0,12.722,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.901,15.35,288.5,1666.0,2.35e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,2.013972669,18.85,292.0,140.0,12.158,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.901,18.35,291.5,1666.0,6.85e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,2.011841268,15.85,289.0,140.0,11.554,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.901,19.35,292.5,1666.0,8.850000000000001e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,2.009714374,11.85,285.0,140.0,10.928,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,0.901,20.35,293.5,1666.0,9.72e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,2.007591971,7.85,281.0,140.0,10.261,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,1.776792337,21.85,295.0,645.0,9.617,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,2.005474047,4.85,278.0,140.0,9.733,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,1.773477134,17.85,291.0,645.0,8.891,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,2.003360587,1.85,275.0,140.0,9.143,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,1.770174279,14.85,288.0,645.0,8.399,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,2.001251577,-0.15,273.0,140.0,8.770999999999999,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,1.765242999,9.85,283.0,645.0,7.559,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,1.999147003,-2.15,271.0,140.0,8.383,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,1.761970714,4.85,278.0,645.0,6.806,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,1.999147003,-5.15,268.0,140.0,7.881,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,1.758710539,1.85,275.0,645.0,6.357,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,1.99704685,-8.15,265.0,140.0,7.398999999999999,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,1.757084971,-0.15,273.0,645.0,5.997999999999999,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,1.995201537121069,-10.15,263.0,140.0,7.1370000000000005,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,1.753842835,-3.15,270.0,645.0,5.514,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,1.9935866411776475,-12.65,260.5,140.0,6.622,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,1.750612641,-6.15,267.0,645.0,5.307,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,1.901,-16.15,257.0,140.0,6.137,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.750612641,-7.15,266.0,645.0,4.947,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,1.901,-18.65,254.5,140.0,5.763,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.747394323,-10.15,263.0,645.0,4.412,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,1.901,-20.15,253.0,140.0,5.491,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.745789598,-12.15,261.0,645.0,4.1770000000000005,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,1.901,-23.15,250.0,140.0,5.002000000000001,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.744187818,-14.15,259.0,645.0,3.958,1,Pan2021,"Pan2021, molality computed from reported density via mass balance"
+NaCl,1.901,-25.15,248.0,140.0,4.728,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-15.15,258.0,645.0,2.069,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-27.15,246.0,140.0,4.462,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-17.15,256.0,645.0,1.59,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-30.15,243.0,140.0,4.027,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-20.15,253.0,645.0,1.345,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-32.15,241.0,140.0,3.713,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-21.15,252.0,645.0,1.183,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-35.15,238.0,140.0,3.3590000000000004,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-15.15,258.0,645.0,1.638,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-37.15,236.0,140.0,3.091,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.7485549721934497,-9.15,264.0,645.0,2.343,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,1.901,-40.15,233.0,140.0,2.727,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.7521205676017906,-5.15,268.0,645.0,2.726,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,1.901,-35.15,238.0,140.0,3.318,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.7566219188111258,-0.15,273.0,645.0,3.5090000000000003,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,1.901,-27.15,246.0,140.0,3.919,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.759346610949818,2.85,276.0,645.0,4.252000000000001,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,1.901,-22.15,251.0,140.0,4.648,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.7639279782160016,7.85,281.0,645.0,5.102,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,1.901,-16.15,257.0,140.0,5.511,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.7704273560064503,14.85,288.0,645.0,7.928,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,1.995201537121069,-10.15,263.0,140.0,6.577,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,1.901,14.85,288.0,1258.0,2.639,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.997808647506311,-6.15,267.0,140.0,7.453,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,1.901,11.85,285.0,1258.0,2.185,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,2.001773417651029,-0.15,273.0,140.0,8.202,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,1.901,9.85,283.0,1258.0,1.914,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,2.0058037205999644,5.85,279.0,140.0,9.517,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,1.901,6.85,280.0,1258.0,1.611,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,2.0085273400218595,9.85,283.0,140.0,10.055,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,1.901,4.85,278.0,1258.0,1.387,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,2.0119735784794432,14.85,288.0,140.0,11.21,1,Pan2021,molality via in-hull density interp from Pan completed rows
+NaCl,1.901,2.85,276.0,1258.0,1.235,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,18.85,292.0,1043.0,5.478,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-0.15,273.0,1258.0,1.0,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,14.85,288.0,1043.0,4.254,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-2.15,271.0,1258.0,0.000138,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,12.85,286.0,1043.0,3.785,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-4.15,269.0,1258.0,3.62e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,9.85,283.0,1043.0,3.032,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-6.15,267.0,1258.0,2.01e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,7.35,280.5,1043.0,2.656,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-8.15,265.0,1258.0,1.24e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,4.85,278.0,1043.0,2.225,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-10.15,263.0,1258.0,7.82e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,1.85,275.0,1043.0,1.813,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-12.15,261.0,1258.0,3.96e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-0.15,273.0,1043.0,1.6010000000000002,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-14.15,259.0,1258.0,2.48e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-3.15,270.0,1043.0,1.294,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-16.15,257.0,1258.0,1.7499999999999998e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-5.15,268.0,1043.0,1.131,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-18.15,255.0,1258.0,1.37e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-8.15,265.0,1043.0,0.985,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-15.15,258.0,1258.0,3.3300000000000003e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-10.15,263.0,1043.0,0.788,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-11.15,262.0,1258.0,6.04e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-12.15,261.0,1043.0,8.91e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-6.15,267.0,1258.0,2.13e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-14.15,259.0,1043.0,4.69e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-2.15,271.0,1258.0,7.45e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-15.15,258.0,1043.0,3.35e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,1.85,275.0,1258.0,0.0036499999999999,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-11.15,262.0,1043.0,0.0001529999999999,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,4.85,278.0,1258.0,0.00477,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-8.15,265.0,1043.0,0.000411,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,7.85,281.0,1258.0,0.097,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-3.15,270.0,1043.0,0.00824,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,9.85,283.0,1258.0,0.674,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,2.85,276.0,1043.0,1.6800000000000002,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,12.85,286.0,1258.0,1.851,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,5.85,279.0,1043.0,2.004,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,14.35,287.5,1258.0,2.004,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,9.85,283.0,1043.0,2.474,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,21.35,294.5,1713.0,1.566,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,12.85,286.0,1043.0,2.855,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,17.85,291.0,1713.0,1.233,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,14.85,288.0,1481.0,1.7399999999999998,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,14.85,288.0,1713.0,1.005,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,11.85,285.0,1481.0,1.378,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,10.85,284.0,1713.0,4.18e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,8.85,282.0,1481.0,1.126,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,6.85,280.0,1713.0,1.41e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,4.85,278.0,1481.0,6e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,5.85,279.0,1713.0,9.68e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,2.85,276.0,1481.0,3.48e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,8.85,282.0,1713.0,2.47e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,0.85,274.0,1481.0,1.6899999999999997e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,14.85,288.0,1713.0,0.000116,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-1.15,272.0,1481.0,1.17e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,18.35,291.5,1713.0,0.000303,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-4.15,269.0,1481.0,5.24e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,18.85,292.0,1713.0,0.000358,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-6.15,267.0,1481.0,3.3e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-8.15,265.0,1481.0,2.34e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-11.15,262.0,1481.0,1.58e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-13.15,260.0,1481.0,1.08e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-9.15,264.0,1481.0,2.11e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-5.15,268.0,1481.0,4.1e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-2.15,271.0,1481.0,7.58e-06,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,-0.15,273.0,1481.0,1.34e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,2.85,276.0,1481.0,3.24e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,4.85,278.0,1481.0,5.93e-05,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,7.85,281.0,1481.0,0.000116,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,9.85,283.0,1481.0,0.000214,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,11.85,285.0,1481.0,0.000376,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,13.85,287.0,1481.0,0.000681,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,14.85,288.0,1481.0,0.00118,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,17.85,291.0,1481.0,0.055,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+NaCl,1.901,18.85,292.0,1481.0,0.194,1,Pan2021,molality HELD: needs Pan/Reaktoro density (out of hull)
+MgSO4,0.8343097363,22.0,295.15,200.0,2.66811,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.7821633396,22.0,295.15,500.0,2.63097,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.7464473881,22.0,295.15,800.0,2.68008,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.7280462079,22.0,295.15,1000.0,2.58318,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.8320375991,15.0,288.15,200.0,2.4995000000000003,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.7798226786,15.0,288.15,500.0,2.48765,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.7443778527,15.0,288.15,800.0,2.52233,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.8304778051,10.0,283.15,200.0,2.16433,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.7783839618,10.0,283.15,500.0,2.1468800000000003,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.7431291645,10.0,283.15,800.0,1.95599,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.829078982,5.0,278.15,200.0,2.13879,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.7770186822,5.0,278.15,500.0,2.1468800000000003,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.8277621917,0.0,273.15,200.0,1.91256,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.775794019,0.0,273.15,500.0,1.97513,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.8266037865,-5.0,268.15,200.0,1.7131900000000002,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.7747764113,-5.0,268.15,500.0,1.7027,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.8257563478,-10.0,263.15,200.0,1.46358,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.7739642453,-10.0,263.15,500.0,1.49631,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.8251411193,-15.0,258.15,200.0,1.2338900000000002,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.8248338488,-20.0,253.15,200.0,1.01274,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.009729554,22.0,295.15,70.77725,0.26548,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.009462561,22.0,295.15,150.34664,0.27037,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.009140798,22.0,295.15,269.90327,0.2723399999999999,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.008964619,22.0,295.15,349.73754,0.27083,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.008809825,22.0,295.15,429.67158,0.25934,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.008611066,22.0,295.15,549.75196,0.26322,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.008439557,22.0,295.15,670.0369,0.25161,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.00838788,22.0,295.15,710.17528,0.2406299999999999,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.00828915,22.0,295.15,790.51448,0.21735,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.008198762,22.0,295.15,870.93398,0.20034,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.00811559,22.0,295.15,951.43026,0.19427,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.008036671,22.0,295.15,1031.99976,0.18778,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.007962441,22.0,295.15,1112.63897,0.18146,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.007892683,22.0,295.15,1193.34433,0.17464,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.007825973,22.0,295.15,1274.11231,0.15819,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.007760984,22.0,295.15,1354.93938,0.15067,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
+MgSO4,0.007697659,22.0,295.15,1435.82199,0.1437,1,Pan2020,"Pan2020, molality computed from reported density via mass balance"
