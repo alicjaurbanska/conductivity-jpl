@@ -1,0 +1,51 @@
+# ==========================================
+# WALDEN FLATNESS AUDIT
+# ==========================================
+# How flat is W(T, I) = lambda * eta^alpha across T, at fixed I? A perfectly
+# obeyed Walden rule makes W independent of T; the coefficient of variation
+# of W across the training T range, binned by I decade, is a compact
+# per-ion diagnostic of how well that's holding.
+
+def walden_flatness_audit(splines_by_name):
+    print("\n" + "=" * 70)
+    print("Walden flatness audit: CV of W(T, I) across T, by I decade")
+    print("=" * 70)
+    if not WALDEN:
+        print("  WALDEN=False - nothing to audit.")
+        return {}
+
+    audit = {}
+    for name, (spl, t_range, I_range, ion_df) in splines_by_name.items():
+        t_vals = np.linspace(t_range[0], t_range[1], 30)
+        I_lo = max(1e-6, I_range[0])
+        I_bins = np.geomspace(I_lo, I_range[1], 4)
+        cvs = []
+        for I_fixed in I_bins:
+            W_vals = spl.W(t_vals, np.full_like(t_vals, I_fixed))
+            W_vals = W_vals[np.isfinite(W_vals)]
+            if len(W_vals) < 5 or np.mean(W_vals) == 0:
+                continue
+            cv = np.std(W_vals) / abs(np.mean(W_vals))
+            cvs.append(cv)
+        if cvs:
+            audit[name] = {'mean_cv': float(np.mean(cvs)), 'max_cv': float(np.max(cvs)),
+                            'alpha': spl.alpha}
+            print(f"  {name:12s}: alpha={spl.alpha:.3f}, mean CV(W over T)={np.mean(cvs):.2%}, "
+                  f"max={np.max(cvs):.2%} across {len(cvs)} I-decades "
+                  f"(0% = perfectly flat = strict Walden rule holds exactly)")
+    return audit
+
+
+walden_audit_baseline = walden_flatness_audit(ION_SPLINES)
+walden_audit_na_extended = walden_flatness_audit(
+    {'Na+ (extended)': (spline_na_extended, na_t_range_e, na_I_range_e, df_na_ion_extended)})
+
+
+print("\nCell 1 (v2) done.")
+print("model_baseline / model : K+, Cl-, Na+(baseline), Mg2+, SO4 2-, Ca2+, NH4+")
+print("model_extended         : K+, Cl-, Na+(+Pan2021), Mg2+, SO4 2-, Ca2+, NH4+")
+for name, (spl, tr, ir, _) in ION_SPLINES.items():
+    print(f"  {name:12s} native range: T {tr[0]:.1f}-{tr[1]:.1f} K, I_eff {ir[0]:.4f}-{ir[1]:.4f} mol/kg")
+print(f"  Na+ extended   native range: T {na_t_range_e[0]:.1f}-{na_t_range_e[1]:.1f} K, "
+      f"I_eff {na_I_range_e[0]:.4f}-{na_I_range_e[1]:.4f} mol/kg, "
+      f"P {spline_na_extended.P_train_range[0]:.1f}-{spline_na_extended.P_train_range[1]:.1f} MPa")
