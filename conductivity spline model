@@ -1,91 +1,105 @@
 # ==========================================================
-# CELL 1 - THE MODEL (v5.2: ambient-first, all-source training, CV splines)
+# CELL 1 - THE MODEL (v6: joint simultaneous multi-salt fit)
 # ==========================================================
 #
-# v5.2 (on top of v5 review):
-# - AMBIENT_ONLY=True is the MASTER PRESSURE SWITCH; all P plumbing intact.
-# - INCLUDE_PAN master switch (default False) - Pan2021/Pan2020 excluded.
-# - SPECIATION_DB switch: 'supcrt' -> speciation_supcrt.csv,
-#   'wateq4f' -> speciation_wateq4f.csv.
-# - DATA_FROM_GITHUB switch: read library + speciation from the repo's raw
-#   URLs instead of local/uploaded files.
-# - AdamsHall1931 is RELATIVE data (kappa(P)/kappa(1bar), Conductivity_Ratio
-#   column): it cannot train absolute surfaces (at 1 bar its ratio is 1 by
-#   definition). Staged into relative_pressure_df for the future
-#   pressure-channel test; excluded from every absolute fit and pool.
-# - REPLICATE POLICY: rows sharing (Source, T, I[, P]) are averaged into ONE
-#   unit-weight point. Repetition by a single lab does not increase that
-#   lab's vote; different labs at the same condition remain separate
-#   unit-weight points. No replicate-count weighting.
-# - SPLINE FIT: one uniform path - scattered SmoothBivariateSpline in W
-#   space, smoothing s selected by K-fold cross-validation on a scale-free
-#   grid, final surface refit on all points. The grid/regrid machinery is
-#   removed (heterogeneous source T-levels made it fragment and clamp).
-# - COLD AMBIENT ROWS TRAIN: below the known ion's T floor, deconvolution
-#   uses ev_extrap (Walden T-extension of the W surface, then divide by
-#   eta at the TRUE cold T). Only fires below the floor; only in ambient
-#   mode (pressure mode restores the v4.1 hard gate). The KCl transport-
-#   number correlation is NOT extrapolated - it is only used inside the
-#   KCl split (5-90 C, inside its validity).
-# - WATER VISCOSITY: table extended to 425 K. Above 372 K at low P the
-#   liquid does not exist at the nominal pressure, so the SATURATED-LIQUID
-#   branch is used (liquid eta is nearly P-independent there); this keeps
-#   hot Larionov ambient rows (to 150 C) usable and avoids iapws silently
-#   returning STEAM viscosity.
-# - Speciation coverage: speciation_conditions_required.csv lists ALL
-#   unique (Salt, T, m, P) the model needs, so speciate_library.py can
-#   rebuild speciation_supcrt.csv as ONE unified file.
-# - Guards: FLAGGED guard fixed (no Concentration_molL column);
-#   Source_Type='derived' rows dropped; contamination guards unchanged.
+# v6 (on top of v5.2):
+#
+# JOINT SIMULTANEOUS FIT (FIT_MODE='joint', the new default). Specific
+# conductivity is LINEAR in the ion-surface spline coefficients:
+#     kappa_j = sum_i m_free_ij * W_i(T_j, sqrt I_j) / eta_j^alpha_i  + pairs_j
+# so ALL seven ion surfaces are solved in ONE penalized weighted linear
+# least-squares system:
+#   - every salt equation constrains every ion it contains (Na+ is pinned
+#     by NaCl AND Na2SO4 simultaneously - no sequential error cascade);
+#   - the KCl transport-number rows enter as soft ANCHOR equations
+#     lambda_K = t+ * kappa / m_free_K, fixing the cation/anion gauge that
+#     whole-salt data alone cannot resolve;
+#   - residuals are RELATIVE (each equation scaled by its measured kappa),
+#     so dilute data is not drowned out by concentrated brines;
+#   - smoothness via second-difference (P-spline) penalties per ion, one
+#     global strength lambda chosen by K-fold cross-validation;
+#   - cold rows (Mahboub NaCl/NH4Cl to -10 C) enter DIRECTLY as equations:
+#     no known-ion Walden extrapolation is needed during training;
+#   - held-out salts (K2SO4, MgSO4, CaSO4) NEVER enter the joint system -
+#     the additivity tests stay non-circular.
+# The sequential chain (v5.2) still runs first: it supplies the per-ion
+# Walden alphas, the gauge initialization, and the seq-vs-joint comparison
+# printout. Set FIT_MODE='sequential' to get exact v5.2 behavior.
+#
+# Retained from v5.2: AMBIENT_ONLY master pressure switch; wired source
+# switches (Pan off); replicate policy (average within author, unit
+# weights); CV-smoothed scattered splines for the sequential chain;
+# relative-only Adams & Hall staging; unified speciation-conditions export;
+# saturated-liquid viscosity branch (table to 623 K); all guards.
 
 import os
 import warnings
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.interpolate import (SmoothBivariateSpline, LinearNDInterpolator,
-                               UnivariateSpline)
+from scipy.interpolate import (SmoothBivariateSpline, RectBivariateSpline,
+                               LinearNDInterpolator, UnivariateSpline, BSpline)
 from scipy.spatial import Delaunay
 
 FIG_DIR = 'Figures'
 os.makedirs(FIG_DIR, exist_ok=True)
 
 # ---- MASTER SWITCHES -------------------------------------------------
-SQRT_I = True        # fit splines against sqrt(I) instead of raw I
-WALDEN = True        # fit W = lambda * eta_water(T, P)^alpha
-AMBIENT_ONLY = True  # True -> only P = REFERENCE_PRESSURE_MPA rows train/validate.
-                     # False -> full pressure mode (all plumbing intact).
-WALDEN_ALPHA_FIT = True  # fit fractional Walden exponent per ion; False -> alpha = 1
-INCLUDE_PAN = False  # master Pan switch: distrusted, excluded by default
+SQRT_I = True
+WALDEN = True
+AMBIENT_ONLY = True   # False -> full pressure mode (plumbing intact)
+WALDEN_ALPHA_FIT = True
+INCLUDE_PAN = False
+FIT_MODE = 'joint'    # 'joint' (v6 simultaneous fit) or 'sequential' (v5.2)
+JOINT_INCLUDE_ALL = False
+# True  -> PRODUCTION fit: K2SO4, MgSO4, CaSO4 equations ALSO train the
+#          joint system (all available data improves the surfaces). The
+#          additivity tests on those salts are then IN-SAMPLE.
+# False -> VALIDATION fit: those salts are excluded, so the additivity
+#          tests remain non-circular. Use this configuration to generate
+#          the accuracy numbers quoted in the paper.
 
 # ---- SOURCE SWITCHES -------------------------------------------------
-USE_CORTES    = True          # Cortes2026: KCl/NaCl/Na2SO4 -> training
-USE_MAHBOUB   = True          # Mahboub: NaCl, NH4Cl -> training; MgSO4 + mixture -> validation
-USE_ADAMSHALL = True          # AdamsHall1931: RELATIVE data -> staged for pressure tests only
-USE_HORNE     = True          # Horne1966: MgSO4 -> test pool (MgSO4 never fitted)
-USE_LARIONOV  = True          # Larionov1984: MgSO4 -> test pool
-USE_PAN2021   = INCLUDE_PAN   # Pan2021 NaCl -> Na+ training if ever re-enabled
-USE_PAN2020   = INCLUDE_PAN   # Pan2020 MgSO4 -> test pool if ever re-enabled
-EXCLUDE_DERIVED = True        # drop Source_Type == 'derived' rows
+USE_CORTES    = True
+USE_MAHBOUB   = True
+USE_ADAMSHALL = True          # relative data -> staged for pressure tests only
+USE_HORNE     = True
+USE_LARIONOV  = True
+USE_PAN2021   = INCLUDE_PAN
+USE_PAN2020   = INCLUDE_PAN
+EXCLUDE_DERIVED = True
 
 # ---- FILES / DATA ORIGIN ---------------------------------------------
-SPECIATION_DB = 'supcrt'      # 'supcrt' or 'wateq4f' -> speciation_{db}.csv
+SPECIATION_DB = 'supcrt'      # 'supcrt' or 'wateq4f'
 SPECIATION_FILE = f'speciation_{SPECIATION_DB}.csv'
 LIBRARY_FILE = 'empirical_conductivity_library.csv'
-DATA_FROM_GITHUB = False      # True -> read the two CSVs from the repo
+DATA_FROM_GITHUB = True
 GITHUB_RAW = 'https://raw.githubusercontent.com/alicjaurbanska/conductivity-jpl/main/'
+GITHUB_PATHS = {LIBRARY_FILE: 'conductivity data/' + LIBRARY_FILE,
+                SPECIATION_FILE: 'speciation databases/' + SPECIATION_FILE}
 def _data(fname):
-    return GITHUB_RAW + fname if DATA_FROM_GITHUB else fname
+    if not DATA_FROM_GITHUB:
+        return fname
+    from urllib.parse import quote
+    return GITHUB_RAW + quote(GITHUB_PATHS.get(fname, fname))
 
 MIN_POINTS = 16
 REFERENCE_PRESSURE_MPA = 0.1
 IAPWS_P_CEILING_MPA = 1000.0
 
-# ---- CV SMOOTHING SELECTION ------------------------------------------
+# ---- CV SMOOTHING (sequential chain) ---------------------------------
 CV_FOLDS = 5
 CV_SEED = 0
-CV_MIN_POINTS = 30            # below this, folds get too thin: FITPACK heuristic
+CV_MIN_POINTS = 30
 S_GRID_FACTORS = np.geomspace(1e-6, 1.0, 13)
+
+# ---- JOINT FIT SETTINGS ----------------------------------------------
+JOINT_NT_INT = 4              # interior knots in T per ion
+JOINT_NX_INT = 4              # interior knots in sqrt(I) per ion
+JOINT_LAM_FACTORS = np.geomspace(1e-5, 1e3, 9)   # penalty strength grid (CV)
+JOINT_CV_FOLDS = 5
+JOINT_CV_SEED = 0
+ANCHOR_WEIGHT = 1.0           # KCl transport-number gauge rows
 
 PAIR_CONDUCTION = True
 MC12_PAIR_COEFFS = {
@@ -141,14 +155,11 @@ def plot_ion_spline(spline, t_range, I_range, ion_df, title, ax, n_points=60):
 # 0.2 WATER VISCOSITY (IAPWS-95 + IAPWS 2008, cached per pressure)
 # ==========================================
 class WaterViscosity:
-    """eta_water(T, P) in mPa s (iapws package), cubic eta(T) spline cached
-    per pressure. Supercooled metastable branch below 273.15 K (floor
-    250.15 K). v5.2: table extends to 425.15 K; where the requested P is
-    below the saturation pressure (liquid would not exist, iapws would
-    return STEAM), the SATURATED-LIQUID state is used instead - correct
-    for hot nominal-ambient measurements, since liquid viscosity is nearly
-    P-independent at these conditions."""
-    T_MIN, T_MAX, N_GRID = 250.15, 425.15, 300
+    """eta_water(T, P) in mPa s. Supercooled branch below 273.15 K (floor
+    250.15 K). Above 372 K at low P the liquid does not exist at the
+    nominal pressure, so the SATURATED-LIQUID state is used (liquid eta is
+    nearly P-independent there); table extends to 623.15 K."""
+    T_MIN, T_MAX, N_GRID = 250.15, 623.15, 400
     def __init__(self):
         self._cache = {}
     def _key(self, P_MPa):
@@ -166,7 +177,7 @@ class WaterViscosity:
                 try:
                     w = None
                     if T > 372.0:
-                        sat = IAPWS95(T=float(T), x=0)  # saturated liquid
+                        sat = IAPWS95(T=float(T), x=0)
                         Psat = getattr(sat, 'P', None)
                         if Psat is not None and float(P_MPa) < Psat:
                             w = sat
@@ -227,7 +238,7 @@ class WaterViscosity:
 VISC = WaterViscosity()
 
 # ==========================================
-# 0.3 CV SMOOTHING SELECTION
+# 0.3 CV SMOOTHING SELECTION (sequential chain)
 # ==========================================
 def _fit_sbs(t, x, z, w, kx, ky, s):
     with warnings.catch_warnings():
@@ -235,11 +246,6 @@ def _fit_sbs(t, x, z, w, kx, ky, s):
         return SmoothBivariateSpline(t, x, z, w=w, kx=kx, ky=ky, s=s)
 
 def select_s_by_cv(t, x, z, w, kx, ky, label):
-    """K-fold CV over a scale-free smoothing grid. s candidates =
-    S_GRID_FACTORS * total weighted variance, matching FITPACK's constraint
-    sum (w_i (z_i - S))^2 <= s. Factor 1 ~ fit-the-mean, 1e-6 ~ near-
-    interpolation. Fallback to the FITPACK heuristic m - sqrt(2m) when
-    points are too few or all candidates fail."""
     m = len(t)
     s_heur = m - np.sqrt(2 * m)
     if m < CV_MIN_POINTS:
@@ -288,13 +294,14 @@ def select_s_by_cv(t, x, z, w, kx, ky, label):
     return s_best, results
 
 # ==========================================
-# 0.4 SPLINE WRAPPER (scattered bicubic, Walden-aware, CV-smoothed)
+# 0.4 SPLINE WRAPPER
 # ==========================================
 class IonSpline:
-    """Bicubic scattered-data B-spline over (T, sqrt(I_eff)) fitted by
-    penalized least squares with CV-chosen s. Unit weights (v5.2 replicate
-    policy handles averaging upstream). Lambda-space interface: .ev,
-    .ev_or_nan, .ev_extrap, .dT, .dI_val, .d2I_val, .W, validate_physics().
+    """Bicubic surface over (T, sqrt(I_eff)) with a lambda-space interface.
+    Two construction paths:
+      - __init__: scattered CV-smoothed fit (sequential chain, v5.2)
+      - from_W_grid: wrap a precomputed W(T, x) coefficient surface
+        (joint fit, v6) with hull taken from the ion's data support.
     WALDEN: lambda(T, P, I) = W(T, sqrt I) / eta_water(T, P)^alpha."""
     def __init__(self, t, I, lambda_val, label, s=None, w=None, kx=3, ky=3,
                  P_ref_MPa=REFERENCE_PRESSURE_MPA, P_MPa=None):
@@ -343,9 +350,34 @@ class IonSpline:
         self.t_range = (float(t.min()), float(t.max()))
         self.I_range = (float(I.min()), float(I.max()))
         self.validate_physics()
+
+    @classmethod
+    def from_W_grid(cls, t_grid, x_grid, W_grid, support_t, support_I, alpha,
+                    label, lam_used, P_ref_MPa=REFERENCE_PRESSURE_MPA,
+                    P_train_range=(REFERENCE_PRESSURE_MPA, REFERENCE_PRESSURE_MPA)):
+        """Wrap a joint-fit W surface (values on a dense rectangular grid in
+        (T, x) space) into the standard IonSpline interface. Hull and ranges
+        come from the ion's actual data support, so out-of-data queries are
+        masked exactly as in the sequential path."""
+        self = cls.__new__(cls)
+        self.label = label
+        self.P_ref = P_ref_MPa
+        self.P_train_range = P_train_range
+        self.alpha = float(alpha)
+        self._spline = RectBivariateSpline(t_grid, x_grid, W_grid, kx=3, ky=3, s=0)
+        self.s_used = lam_used
+        self.cv_table = None
+        self.method = f'joint penalized LSQ (lam={lam_used:.3g}) [Walden a={alpha:.3f}]'
+        support_t = np.asarray(support_t, dtype=float)
+        support_I = np.asarray(support_I, dtype=float)
+        self._hull = Delaunay(np.column_stack([support_t, self._x(support_I)]))
+        self.t_range = (float(support_t.min()), float(support_t.max()))
+        self.I_range = (float(support_I.min()), float(support_I.max()))
+        self.validate_physics()
+        return self
+
     @staticmethod
     def _fit_alpha(t, I, lam, P_MPa):
-        """log lambda = c0 + c1 sqrt(I) + c2 I - alpha log eta; clip [0.5, 1.2]."""
         eta = VISC.eta_multi(t, P_MPa)
         s = np.sqrt(np.asarray(I, dtype=float))
         A = np.column_stack([np.ones_like(s), s, s * s, np.log(eta)])
@@ -374,10 +406,6 @@ class IonSpline:
             raise ValueError(f"{self.label} spline: query point(s) outside the convex hull.")
         return result if result.size > 1 else result.item()
     def ev_extrap(self, t_query, I_query, mode='linear', T_max_K=30.0, P_MPa=None):
-        """lambda below the T hull floor (WALDEN only): extend W in T
-        ('constant' = strict Walden rule, 'linear' = first order in T from
-        the edge), then divide by eta(TRUE T)^alpha. NaN where I is outside
-        the hull cross-section at the T edge or T > T_max_K below it."""
         if not WALDEN:
             raise RuntimeError('ev_extrap requires WALDEN = True.')
         T = np.atleast_1d(np.asarray(t_query, dtype=float))
@@ -608,7 +636,6 @@ if USE_PAN2021:
 VALIDATION_SALTS_BY_SOURCE = {}
 if USE_MAHBOUB:
     VALIDATION_SALTS_BY_SOURCE['Mahboub'] = ['MgSO4', 'NaCl:MgSO4 (1:1)']
-# MgSO4/K2SO4 are never fitted: sources here are test data by construction.
 HELDOUT_EXTRA_SOURCES = {}
 if USE_LARIONOV:
     HELDOUT_EXTRA_SOURCES['Larionov1984'] = ['MgSO4']
@@ -616,8 +643,6 @@ if USE_HORNE:
     HELDOUT_EXTRA_SOURCES['Horne1966'] = ['MgSO4']
 if USE_PAN2020:
     HELDOUT_EXTRA_SOURCES['Pan2020'] = ['MgSO4']
-# RELATIVE-only sources (kappa(P)/kappa(1bar), no absolute values): kept in
-# the frame only to be STAGED for the pressure-channel test, never fitted.
 RELATIVE_SOURCES = {'AdamsHall1931': ['NaCl', 'K2SO4', 'KCl']} if USE_ADAMSHALL else {}
 
 VALIDATION_SOURCES = list(VALIDATION_SALTS_BY_SOURCE.keys())
@@ -634,17 +659,19 @@ def _training_sources_for_salt(salt):
     return set(TRAINING_SOURCES) | extra
 
 FIT_SALTS = ['KCl', 'NaCl', 'MgCl2', 'Na2SO4', 'CaCl2', 'NH4Cl']
-HELDOUT_SALTS = ['K2SO4', 'MgSO4']
+HELDOUT_SALTS = ['K2SO4', 'MgSO4', 'CaSO4']   # v6: CaSO4 loaded as a pool too
 ALL_SALTS = FIT_SALTS + HELDOUT_SALTS
+# JOINT_INCLUDE_ALL=True (production): every salt with data trains the
+# joint system. False (validation): only FIT_SALTS train.
+JOINT_SALTS = ALL_SALTS if JOINT_INCLUDE_ALL else list(FIT_SALTS)
+TESTS_ARE_NONCIRCULAR = not JOINT_INCLUDE_ALL   # read by the test cell narrative
 
 df_raw = pd.read_csv(_data(LIBRARY_FILE))
-# --- FLAGGED-row guard ------------------------------------------------
 _flagged = df_raw['Notes'].astype(str).str.contains('FLAGGED', case=False, na=False)
 if _flagged.any():
     print(f"FLAGGED-row guard: dropping {_flagged.sum()} row(s) -> "
           f"{df_raw.loc[_flagged, ['Salt', 'Source', 'Temperature_C', 'Molality_molkg']].to_dict('records')}")
     df_raw = df_raw[~_flagged].copy()
-# --- derived-row guard ------------------------------------------------
 if EXCLUDE_DERIVED and 'Source_Type' in df_raw.columns:
     _derived = df_raw['Source_Type'].astype(str).str.lower().eq('derived')
     if _derived.any():
@@ -653,7 +680,6 @@ if EXCLUDE_DERIVED and 'Source_Type' in df_raw.columns:
         df_raw = df_raw[~_derived].copy()
 df = df_raw
 
-# --- unit auto-fix (Mahboub MgSO4 S/m -> mS/cm) -----------------------
 def _maybe_fix_mahboub_mgso4_units(df):
     win = ((df['Salt'] == 'MgSO4') & (df['Temperature_C'].between(20.0, 25.0)) &
            (df['Molality_molkg'].between(0.3, 1.0)) & (df['Pressure_MPa'] == 0.1))
@@ -677,7 +703,6 @@ def _maybe_fix_mahboub_mgso4_units(df):
         f'raw and x10 (found {np.round(k, 2)} mS/cm). Inspect the library manually.')
 df = _maybe_fix_mahboub_mgso4_units(df)
 
-# --- unit sanity guard ------------------------------------------------
 def _assert_units(df):
     mc = df[(df['Source'] == 'McCleskey2011') & (df['Salt'] == 'NaCl') &
             (df['Temperature_C'] == 25.0)].sort_values('Molality_molkg')
@@ -706,7 +731,6 @@ def _assert_units(df):
     print('Unit guard passed.')
 _assert_units(df)
 
-# --- role-based row selection -----------------------------------------
 is_training_row = df['Source'].isin(TRAINING_SOURCES) & df['Salt'].isin(ALL_SALTS)
 is_promoted_row = pd.Series(False, index=df.index)
 for _src, _salts in PROMOTED_SALTS_BY_SOURCE.items():
@@ -742,7 +766,6 @@ missing_cols = required_cols - set(df.columns)
 if missing_cols:
     raise ValueError(f'Library missing required columns: {sorted(missing_cols)}')
 
-# --- stage RELATIVE rows (no absolute conductivity) -------------------
 _rel_mask = df['Conductivity_mScm'].isna()
 relative_pressure_df = df[_rel_mask].copy()
 if len(relative_pressure_df):
@@ -752,7 +775,6 @@ if len(relative_pressure_df):
     print(relative_pressure_df.groupby(['Source', 'Salt']).size().to_string())
 df = df[~_rel_mask].copy()
 
-# --- speciation merge -------------------------------------------------
 spec_df = pd.read_csv(_data(SPECIATION_FILE))
 spec_lookup = SpeciationLookup(spec_df)
 df['_mkey'] = df['Molality_molkg'].round(MERGE_DECIMALS)
@@ -766,7 +788,6 @@ spec_cols = ['Salt', '_tkey', '_mkey', '_pkey'] + list(ION_FREE_COL.values()) + 
     [c for c in PAIR_COLS if c in spec_df.columns] + ['I_eff', 'I_formal']
 df = df.merge(spec_df[spec_cols], on=['Salt', '_tkey', '_mkey', '_pkey'], how='left')
 
-# --- export the FULL required-conditions list (unified rebuild) -------
 _cond_cols = ['Salt', 'Source', 'Temperature_C', 'Molality_molkg', 'Pressure_MPa']
 _required = pd.concat([df[_cond_cols], relative_pressure_df[_cond_cols]],
                       ignore_index=True).drop_duplicates(
@@ -775,11 +796,10 @@ _required = pd.concat([df[_cond_cols], relative_pressure_df[_cond_cols]],
 _required.to_csv('speciation_conditions_required.csv', index=False)
 _n_missing = int(df['I_eff'].isna().sum())
 print(f"\nspeciation_conditions_required.csv written: {len(_required)} unique "
-      f"(Salt, T, m, P) conditions the model needs. Rebuild {SPECIATION_FILE} "
-      f"as ONE unified file with speciate_library.py from this list.")
+      f"(Salt, T, m, P) conditions. Rebuild {SPECIATION_FILE} as ONE unified "
+      f"file with speciate_library.py from this list.")
 if _n_missing:
-    print(f"Currently missing from {SPECIATION_FILE}: {_n_missing} library rows "
-          f"(dropped this run, with per-salt notes below):")
+    print(f"Currently missing from {SPECIATION_FILE}: {_n_missing} rows (dropped):")
     print(df[df['I_eff'].isna()].groupby(['Source', 'Salt']).size().to_string())
 
 def _clean_speciated_rows(d, tag, restrict_pressure=False):
@@ -806,9 +826,6 @@ def _clean_speciated_rows(d, tag, restrict_pressure=False):
     return d
 
 def _iapws_filter(d, tag):
-    """IAPWS validity window: T floor 250.15 K, T ceiling 425.15 K (hot rows
-    up to 150 C now covered via the saturated-liquid branch), P ceiling
-    1000 MPa. Printed, never silent."""
     ok_T, n_T, T_rng = VISC.coverage_check(d['temp_K'].values)
     if n_T > 0:
         print(f"  IAPWS floor [{tag}]: excluding {n_T}/{len(d)} rows below "
@@ -835,7 +852,7 @@ print(f"\nSource roles: TRAINING={TRAINING_SOURCES}  PROMOTED={PROMOTED_SALTS_BY
 print(f"VALIDATION={VALIDATION_SALTS_BY_SOURCE}  TEST-POOL EXTRAS={HELDOUT_EXTRA_SOURCES}")
 print(f"RELATIVE (staged)={RELATIVE_SOURCES}")
 print(f"Switches: SQRT_I={SQRT_I}  WALDEN={WALDEN}  AMBIENT_ONLY={AMBIENT_ONLY}  "
-      f"INCLUDE_PAN={INCLUDE_PAN}  SPECIATION_DB={SPECIATION_DB}")
+      f"INCLUDE_PAN={INCLUDE_PAN}  SPECIATION_DB={SPECIATION_DB}  FIT_MODE={FIT_MODE}")
 for salt in ALL_SALTS:
     d_salt = df[df['Salt'] == salt]
     if d_salt.empty:
@@ -872,8 +889,7 @@ for salt in ALL_SALTS:
         print(f"  -> cross-lab validation stash: {salt}/{src}: {len(d_val)} rows")
 
 # ==========================================
-# 2. TRANSPORT NUMBER FUNCTION (ambient correlation, used only in the
-#    KCl split inside its own 5-90 C validity - never extrapolated)
+# 2. TRANSPORT NUMBER FUNCTION (ambient correlation; KCl split + joint anchors)
 # ==========================================
 def calculate_t_kcl(temp_C, molality):
     term1 = (9.04e-7 * (temp_C ** 2)) - (0.000235 * temp_C) + 0.4960
@@ -882,14 +898,12 @@ def calculate_t_kcl(temp_C, molality):
     return term1 - term2
 
 # ==========================================
-# 3. HELPERS
+# 3. HELPERS (sequential chain)
 # ==========================================
 def fit_lambda_spline(d, label, t_col='temp_K', I_col='I', lambda_col='Lambda',
                       P_col=None, s=None):
-    """Fit a bicubic IonSpline with CV-chosen smoothing.
-    v5.2 REPLICATE POLICY: rows sharing (Source, T, I[, P]) are averaged
-    into ONE unit-weight point (a lab's repetitions do not multiply its
-    vote); different labs at the same condition remain separate points."""
+    """Replicate policy: rows sharing (Source, T, I[, P]) are averaged into
+    ONE unit-weight point; different labs stay separate points."""
     d = d.copy()
     n_before = len(d)
     group_cols = (['Source'] if 'Source' in d.columns else []) + \
@@ -931,11 +945,6 @@ def fit_lambda_spline(d, label, t_col='temp_K', I_col='I', lambda_col='Lambda',
 
 def subtract_ion_molar(source_df, salt_name, known_ion, model, new_ion_pretty_label=None,
                        known_ion_extrap_mode=None, P_col=None):
-    """Free-ion deconvolution:
-    lambda_new = (kappa - kappa_pairs - m_free_known * lambda_known) / m_free_new.
-    known_ion_extrap_mode ('constant'/'linear'): rows below the known ion's
-    T floor get lambda_known from ev_extrap (Walden T-extension) instead of
-    being dropped."""
     stoich = model.stoich_for(salt_name)
     if known_ion not in stoich:
         raise ValueError(f"{salt_name} stoichiometry {stoich} has no ion '{known_ion}'.")
@@ -1017,7 +1026,8 @@ def subtract_ion_molar(source_df, salt_name, known_ion, model, new_ion_pretty_la
     return spline, t_range, I_range, ion_df
 
 # ==========================================
-# 4. STEP 1: KCl -> K+ and Cl-  (McCleskey + Cortes)
+# 4-7b. SEQUENTIAL CHAIN (v5.2) - supplies Walden alphas, gauge
+#       initialization, and the seq-vs-joint comparison baseline
 # ==========================================
 df_kcl = salt_dfs['KCl'].copy()
 df_kcl['Lambda_Salt'] = df_kcl['Conductivity'] / df_kcl['m_free_K']
@@ -1034,7 +1044,7 @@ df_cl_ion = pd.DataFrame({'Source': df_kcl['Source'], 'temp_K': df_kcl['temp_K']
                           'Lambda': df_kcl['Lambda_Cl'],
                           'Pressure_MPa': df_kcl['Pressure_MPa']})
 print("\n" + "=" * 70)
-print("Ion deconvolution chain (v5.2)")
+print("SEQUENTIAL chain (initialization + baseline)")
 print("=" * 70)
 model = IonConductivityModel(speciation=spec_lookup)
 spline_k, k_t_range, k_I_range, df_k_ion = fit_lambda_spline(
@@ -1044,26 +1054,17 @@ spline_cl, cl_t_range, cl_I_range, df_cl_ion = fit_lambda_spline(
 model.add_ion('K', spline_k)
 model.add_ion('Cl', spline_cl)
 
-# ==========================================
-# 5. STEP 2: NaCl -> Na+  (McCleskey + Cortes + Mahboub)
-# ==========================================
-print("\n" + "=" * 70)
-print("Na+ unified fit (all ambient sources)")
-print("=" * 70)
 df_nacl = salt_dfs['NaCl'].copy()
 if AMBIENT_ONLY:
-    na_extrap_mode = 'linear'  # cold rows deconvolve via Cl- Walden T-extension
+    na_extrap_mode = 'linear'
 else:
-    na_extrap_mode = None      # pressure mode: v4.1 hard gate
+    na_extrap_mode = None
     cl_T_floor = spline_cl.t_range[0]
     _too_cold = df_nacl['temp_K'] < cl_T_floor
     if _too_cold.any():
         print(f"Na+ gate (pressure mode): excluding {int(_too_cold.sum())}/{len(df_nacl)} "
               f"NaCl rows colder than the Cl- floor ({cl_T_floor - 273.15:.1f} C).")
         df_nacl = df_nacl[~_too_cold].copy()
-print(f"NaCl training set: {len(df_nacl)} rows, "
-      f"T {df_nacl['Temperature'].min():.1f}-{df_nacl['Temperature'].max():.1f} C, "
-      f"sources {sorted(df_nacl['Source'].unique())}")
 spline_na, na_t_range, na_I_range, df_na_ion = subtract_ion_molar(
     df_nacl, 'NaCl', known_ion='Cl', model=model,
     new_ion_pretty_label='Na+ (unified)',
@@ -1072,37 +1073,16 @@ _fit_check = spline_na.ev(df_na_ion['temp_K'].values, df_na_ion['I'].values,
                           P_MPa=df_na_ion['Pressure_MPa'].values)
 _rel = np.sqrt(np.mean((df_na_ion['Lambda'].values - _fit_check) ** 2)) / df_na_ion['Lambda'].mean()
 if _rel > 0.20:
-    raise RuntimeError(f'Na+ sanity gate: training rel. RMSE {_rel:.2%} > 20%. '
-                       f'Rerun with known_ion_extrap_mode=None in Section 5 and inspect '
-                       f'which rows the Cl- extrapolation poisoned.')
+    raise RuntimeError(f'Na+ sanity gate: training rel. RMSE {_rel:.2%} > 20%.')
 
-# ---- backward-compat aliases (flatness-audit cell references these) ---
-model_baseline = model
-model_extended = model
-spline_na_baseline = spline_na_extended = spline_na
-na_t_range_b = na_t_range_e = na_t_range
-na_I_range_b = na_I_range_e = na_I_range
-df_na_ion_baseline = df_na_ion_extended = df_na_ion
-
-# ==========================================
-# 6. STEP 3: MgCl2 -> Mg2+
-# ==========================================
 spline_mg, mg_t_range, mg_I_range, df_mg_ion = subtract_ion_molar(
     salt_dfs['MgCl2'].copy(), 'MgCl2', known_ion='Cl', model=model,
     new_ion_pretty_label='Mg2+ (from MgCl2)',
     known_ion_extrap_mode='linear', P_col='Pressure_MPa')
-
-# ==========================================
-# 7. STEP 4: Na2SO4 -> SO4 2-  (McCleskey + Cortes)
-# ==========================================
 spline_so4, so4_t_range, so4_I_range, df_so4_ion = subtract_ion_molar(
     salt_dfs['Na2SO4'].copy(), 'Na2SO4', known_ion='Na', model=model,
     new_ion_pretty_label='SO4 2- (from Na2SO4)',
     known_ion_extrap_mode='linear', P_col='Pressure_MPa')
-
-# ==========================================
-# 7b. CaCl2 -> Ca2+, NH4Cl -> NH4+  (NH4Cl: McCleskey + Mahboub)
-# ==========================================
 spline_ca, ca_t_range, ca_I_range, df_ca_ion = subtract_ion_molar(
     salt_dfs['CaCl2'].copy(), 'CaCl2', known_ion='Cl', model=model,
     new_ion_pretty_label='Ca2+ (from CaCl2)',
@@ -1112,8 +1092,233 @@ spline_nh4, nh4_t_range, nh4_I_range, df_nh4_ion = subtract_ion_molar(
     new_ion_pretty_label='NH4+ (from NH4Cl)',
     known_ion_extrap_mode='linear', P_col='Pressure_MPa')
 
+model_seq = model
+SEQ_SPLINES = {'K': spline_k, 'Cl': spline_cl, 'Na': spline_na, 'Mg': spline_mg,
+               'SO4': spline_so4, 'Ca': spline_ca, 'NH4': spline_nh4}
+SEQ_ION_DFS = {'K': df_k_ion, 'Cl': df_cl_ion, 'Na': df_na_ion, 'Mg': df_mg_ion,
+               'SO4': df_so4_ion, 'Ca': df_ca_ion, 'NH4': df_nh4_ion}
+
+# ==========================================
+# 7c. JOINT SIMULTANEOUS MULTI-SALT FIT (v6)
+# ==========================================
+def run_joint_fit():
+    print("\n" + "=" * 70)
+    print("JOINT simultaneous multi-salt penalized LSQ fit")
+    print("=" * 70)
+    k_deg = 3
+    IONS = list(ION_FREE_COL)
+    STOICH = IonConductivityModel.SALT_STOICHIOMETRY
+
+    # --- training equations: collapse replicates within (Salt, Source, T, m)
+    keep_cols = ['Salt', 'Source', 'temp_K', 'Molality', 'Conductivity', 'I',
+                 'Pressure_MPa', 'Temperature'] + list(ION_FREE_COL.values()) + \
+        [c for c in PAIR_COLS if c in salt_dfs[JOINT_SALTS[0]].columns]
+    parts = []
+    for salt in JOINT_SALTS:
+        d = salt_dfs[salt][keep_cols].copy()
+        agg = {c: 'first' for c in keep_cols if c not in
+               ('Salt', 'Source', 'temp_K', 'Molality', 'Conductivity')}
+        agg['Conductivity'] = 'mean'
+        d = d.groupby(['Salt', 'Source', 'temp_K', 'Molality'], as_index=False).agg(agg)
+        parts.append(d)
+    train = pd.concat(parts, ignore_index=True)
+    n_eq = len(train)
+    print(f"  {n_eq} salt equations from {JOINT_SALTS} "
+          f"(replicates averaged within author; unit weights).")
+
+    T_all = train['temp_K'].values
+    x_all = np.sqrt(train['I'].values) if SQRT_I else train['I'].values
+    kappa_all = train['Conductivity'].values
+    eta_all = VISC.eta_multi(T_all, train['Pressure_MPa'].values)
+
+    # pair conduction subtracted as a known external term
+    b = kappa_all.copy()
+    for salt in JOINT_SALTS:
+        if PAIR_CONDUCTION and salt in SALT_PAIR_TERMS:
+            msk = (train['Salt'] == salt).values
+            cols = [c for c in SALT_PAIR_TERMS[salt] if c in train.columns]
+            if cols and msk.any():
+                b[msk] = b[msk] - pair_kappa(train[msk], T_all[msk],
+                                             train['I'].values[msk], cols)
+
+    # --- per-ion basis over that ion's data support -------------------
+    def _knots(vals, n_int, k=3):
+        lo, hi = float(vals.min()), float(vals.max())
+        if hi - lo <= 0:
+            raise ValueError('degenerate knot span')
+        interior = np.array([])
+        if n_int > 0:
+            qs = np.linspace(0, 1, n_int + 2)[1:-1]
+            interior = np.unique(np.quantile(vals, qs))
+            interior = interior[(interior > lo + 1e-9) & (interior < hi - 1e-9)]
+        return np.r_[[lo] * (k + 1), interior, [hi] * (k + 1)]
+
+    def _basis(vals, knots, k=3):
+        lo, hi = knots[k], knots[-k - 1]
+        return BSpline.design_matrix(np.clip(vals, lo, hi), knots, k).toarray()
+
+    def _d2(n):
+        D = np.diff(np.eye(n), 2, axis=0)
+        return D.T @ D
+
+    ion_info = {}
+    offset = 0
+    for ion in IONS:
+        salts_with = [s for s in JOINT_SALTS if ion in STOICH[s]]
+        msk = train['Salt'].isin(salts_with).values
+        t_sup, x_sup = T_all[msk], x_all[msk]
+        kt = _knots(t_sup, JOINT_NT_INT, k_deg)
+        kx = _knots(x_sup, JOINT_NX_INT, k_deg)
+        ntc = len(kt) - k_deg - 1
+        nxc = len(kx) - k_deg - 1
+        alpha = SEQ_SPLINES[ion].alpha
+        ion_info[ion] = dict(mask=msk, kt=kt, kx=kx, ntc=ntc, nxc=nxc,
+                             off=offset, alpha=alpha,
+                             t_sup=t_sup, I_sup=train['I'].values[msk])
+        offset += ntc * nxc
+        print(f"  {ion:4s}: support n={msk.sum():3d} from {salts_with}, "
+              f"basis {ntc}x{nxc}, alpha={alpha:.3f} (from sequential)")
+    n_coef = offset
+
+    # --- assemble design (relative residuals: rows scaled by 1/kappa) --
+    A = np.zeros((n_eq, n_coef))
+    for ion, info in ion_info.items():
+        msk = info['mask']
+        m_free = train[ION_FREE_COL[ion]].values[msk]
+        Bt = _basis(T_all[msk], info['kt'], k_deg)
+        Bx = _basis(x_all[msk], info['kx'], k_deg)
+        block = np.einsum('ij,ik->ijk', Bt, Bx).reshape(msk.sum(), -1)
+        A[np.flatnonzero(msk), info['off']:info['off'] + block.shape[1]] = \
+            block * (m_free / eta_all[msk] ** info['alpha'])[:, None]
+    row_scale = 1.0 / kappa_all
+    A_s = A * row_scale[:, None]
+    b_s = b * row_scale
+
+    # --- transport-number gauge anchors (KCl rows) --------------------
+    kcl_msk = (train['Salt'] == 'KCl').values
+    tp = calculate_t_kcl(train['Temperature'].values[kcl_msk],
+                         train['Molality'].values[kcl_msk])
+    rhs_anchor = tp * kappa_all[kcl_msk]
+    infoK = ion_info['K']
+    BtK = _basis(T_all[kcl_msk], infoK['kt'], k_deg)
+    BxK = _basis(x_all[kcl_msk], infoK['kx'], k_deg)
+    blockK = np.einsum('ij,ik->ijk', BtK, BxK).reshape(kcl_msk.sum(), -1)
+    A_anchor = np.zeros((kcl_msk.sum(), n_coef))
+    A_anchor[:, infoK['off']:infoK['off'] + blockK.shape[1]] = \
+        blockK * (train[ION_FREE_COL['K']].values[kcl_msk] /
+                  eta_all[kcl_msk] ** infoK['alpha'])[:, None]
+    a_scale = ANCHOR_WEIGHT / rhs_anchor
+    A_anchor_s = A_anchor * a_scale[:, None]
+    b_anchor_s = np.full(kcl_msk.sum(), ANCHOR_WEIGHT, dtype=float)
+    print(f"  + {kcl_msk.sum()} transport-number anchor equations (weight {ANCHOR_WEIGHT}).")
+
+    # --- penalty (second differences per ion, trace-scaled) -----------
+    A_full = np.vstack([A_s, A_anchor_s])
+    b_full = np.concatenate([b_s, b_anchor_s])
+    AtA_full = A_full.T @ A_full
+    AtB_full = A_full.T @ b_full
+    P_full = np.zeros((n_coef, n_coef))
+    for ion, info in ion_info.items():
+        ntc, nxc, off = info['ntc'], info['nxc'], info['off']
+        P_i = np.kron(_d2(ntc), np.eye(nxc)) + np.kron(np.eye(ntc), _d2(nxc))
+        sl = slice(off, off + ntc * nxc)
+        tr_a = np.trace(AtA_full[sl, sl])
+        tr_p = np.trace(P_i)
+        P_full[sl, sl] = P_i * (tr_a / tr_p if tr_p > 0 else 1.0)
+
+    def _solve(lam, A_t_A, A_t_b):
+        try:
+            return np.linalg.solve(A_t_A + lam * P_full, A_t_b)
+        except np.linalg.LinAlgError:
+            return np.linalg.lstsq(A_t_A + lam * P_full, A_t_b, rcond=None)[0]
+
+    # --- CV over salt equations (anchors always in training) ----------
+    rng = np.random.default_rng(JOINT_CV_SEED)
+    idx = rng.permutation(n_eq)
+    folds = np.array_split(idx, JOINT_CV_FOLDS)
+    cv = []
+    for lam in JOINT_LAM_FACTORS:
+        sse, n_val = 0.0, 0
+        for f in folds:
+            tr_rows = np.setdiff1d(idx, f)
+            A_tr = np.vstack([A_s[tr_rows], A_anchor_s])
+            b_tr = np.concatenate([b_s[tr_rows], b_anchor_s])
+            c = _solve(lam, A_tr.T @ A_tr, A_tr.T @ b_tr)
+            r = A_s[f] @ c - b_s[f]
+            sse += float(np.sum(r ** 2))
+            n_val += len(f)
+        cv.append((float(lam), np.sqrt(sse / n_val)))
+    lam_best, cv_best = min(cv, key=lambda z: z[1])
+    print(f"  CV({JOINT_CV_FOLDS}-fold) over lambda: best lam={lam_best:.3g} "
+          f"(CV relative RMSE={cv_best:.3%}); grid "
+          + ", ".join(f"{l:.0e}:{r:.3%}" for l, r in cv))
+    c_hat = _solve(lam_best, AtA_full, AtB_full)
+    r_train = A_s @ c_hat - b_s
+    print(f"  joint training relative RMSE (all salt equations): "
+          f"{np.sqrt(np.mean(r_train ** 2)):.3%}")
+    for salt in JOINT_SALTS:
+        msk = (train['Salt'] == salt).values
+        print(f"    {salt:8s}: joint rel. RMSE = {np.sqrt(np.mean(r_train[msk] ** 2)):.3%} "
+              f"(n={msk.sum()})")
+
+    # --- wrap each ion surface into the IonSpline interface -----------
+    joint = {}
+    for ion, info in ion_info.items():
+        C = c_hat[info['off']:info['off'] + info['ntc'] * info['nxc']] \
+            .reshape(info['ntc'], info['nxc'])
+        kt, kx = info['kt'], info['kx']
+        t_lo, t_hi = kt[k_deg], kt[-k_deg - 1]
+        x_lo, x_hi = kx[k_deg], kx[-k_deg - 1]
+        t_grid = np.linspace(t_lo, t_hi, 80)
+        x_grid = np.linspace(x_lo, x_hi, 80)
+        Wg = _basis(t_grid, kt, k_deg) @ C @ _basis(x_grid, kx, k_deg).T
+        joint[ion] = IonSpline.from_W_grid(
+            t_grid, x_grid, Wg, info['t_sup'], info['I_sup'], info['alpha'],
+            f'{ion} (joint)', lam_best)
+    return joint, train, lam_best
+
+if FIT_MODE == 'joint':
+    JOINT_SPLINES, joint_train_df, JOINT_LAM = run_joint_fit()
+    model = IonConductivityModel(speciation=spec_lookup)
+    for ion, spl in JOINT_SPLINES.items():
+        model.add_ion(ion, spl)
+    spline_k, spline_cl = JOINT_SPLINES['K'], JOINT_SPLINES['Cl']
+    spline_na, spline_mg = JOINT_SPLINES['Na'], JOINT_SPLINES['Mg']
+    spline_so4, spline_ca = JOINT_SPLINES['SO4'], JOINT_SPLINES['Ca']
+    spline_nh4 = JOINT_SPLINES['NH4']
+    k_t_range, k_I_range = spline_k.t_range, spline_k.I_range
+    cl_t_range, cl_I_range = spline_cl.t_range, spline_cl.I_range
+    na_t_range, na_I_range = spline_na.t_range, spline_na.I_range
+    mg_t_range, mg_I_range = spline_mg.t_range, spline_mg.I_range
+    so4_t_range, so4_I_range = spline_so4.t_range, spline_so4.I_range
+    ca_t_range, ca_I_range = spline_ca.t_range, spline_ca.I_range
+    nh4_t_range, nh4_I_range = spline_nh4.t_range, spline_nh4.I_range
+
+    # seq-vs-joint comparison on the training salts
+    print("\n  Sequential vs joint on training salts (relative RMSE of kappa):")
+    for salt in JOINT_SALTS:
+        d = salt_dfs[salt]
+        for name, mdl_ in [('seq', model_seq), ('joint', model)]:
+            pred = np.atleast_1d(mdl_.predict_from_speciation(
+                salt, d['temp_K'].values, d['Molality'].values, extrap_mode='linear'))
+            ok = np.isfinite(pred)
+            rel = np.sqrt(np.mean(((pred[ok] - d['Conductivity'].values[ok]) /
+                                   d['Conductivity'].values[ok]) ** 2))
+            print(f"    {salt:8s} {name:6s}: rel. RMSE={rel:.3%} on {ok.sum()}/{len(d)} rows")
+else:
+    print("\nFIT_MODE='sequential': sequential splines are the active model.")
+
+# ---- backward-compat aliases ----------------------------------------
+model_baseline = model
+model_extended = model
+spline_na_baseline = spline_na_extended = spline_na
+na_t_range_b = na_t_range_e = na_t_range
+na_I_range_b = na_I_range_e = na_I_range
+df_na_ion_baseline = df_na_ion_extended = df_na_ion
+
 # ==========================================
 # 8. PUBLICATION FIGURE: ALL SEVEN IONIC SURFACES
+#    (dots = sequential-chain derived lambda points, for reference)
 # ==========================================
 ION_SPLINES = {
     'K$^+$':       (spline_k, k_t_range, k_I_range, df_k_ion),
@@ -1129,7 +1334,8 @@ fig = plt.figure(figsize=(16, 9))
 for i, (name, (spl, tr, ir, ion_df)) in enumerate(ION_SPLINES.items(), start=1):
     ax = fig.add_subplot(2, 4, i, projection='3d')
     plot_ion_spline(spl, tr, ir, ion_df, name, ax)
-fig.suptitle('Deconvolved ionic molar conductivity surfaces (dots = derived data points)', y=0.98)
+fig.suptitle(f'Ionic molar conductivity surfaces ({FIT_MODE} fit; '
+             f'dots = sequential-chain derived points)', y=0.98)
 fig.tight_layout()
 save_fig(fig, 'ionic_surfaces')
 plt.show()
@@ -1143,7 +1349,7 @@ for name, (spl, tr, ir, ion_df) in ION_SPLINES.items():
     save_fig(fig, f'ion_surface_{safe}')
     plt.close(fig)
 
-print("\nCell 1 (v5.2) done.")
+print(f"\nCell 1 (v6, FIT_MODE={FIT_MODE}) done.")
 for name, (spl, tr, ir, _) in ION_SPLINES.items():
     print(f"  {name:12s} T {tr[0]:.1f}-{tr[1]:.1f} K, I_eff {ir[0]:.4f}-{ir[1]:.4f} mol/kg, "
-          f"alpha={spl.alpha:.3f}, s={spl.s_used:.3g}")
+          f"alpha={spl.alpha:.3f} [{spl.method}]")
