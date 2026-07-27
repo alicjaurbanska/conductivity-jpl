@@ -1,0 +1,39 @@
+# ==========================================
+# 10. PHASE 1 FLATNESS AUDIT (WALDEN only)
+#     Swept across ionic strength, not just the median slice: for each ion
+#     take many fixed-I T-slices spanning its data range, measure how flat
+#     the Walden product W(T) is on each, and report the MEDIAN and the
+#     90th-percentile (near-worst-case) flatness over those slices. A small
+#     ratio_p90 means the Walden rule holds over the WHOLE surface, not just
+#     at mid-I. nI = number of in-hull I-slices actually used.
+# ========================================== 
+if WALDEN:
+    print("\nWalden flatness audit (swept across I; med & 90th-pctile over I-slices):")
+    print(f"{'ion':13s} {'alpha':>6s} {'Wspr_med':>9s} {'Wspr_p90':>9s} "
+          f"{'ratio_med':>10s} {'ratio_p90':>10s} {'nI':>4s}")
+    for name, (spl, tr, ir, ion_df) in ION_SPLINES.items():
+        T = np.linspace(tr[0], tr[1], 80)
+        I_lo = max(1e-6, float(np.min(ion_df['I'].values)))
+        I_hi = float(np.max(ion_df['I'].values))
+        I_levels = np.geomspace(I_lo, I_hi, 25) if I_hi > I_lo else np.array([I_lo])
+        sp_lam, sp_W = [], []
+        for I0 in I_levels:
+            Icol = np.full_like(T, I0)
+            lam = spl.ev_or_nan(T, Icol)
+            Wv = spl.W(T, Icol)
+            ok = np.isfinite(lam) & np.isfinite(Wv)
+            if ok.sum() < 10:                      # need a real in-hull T-slice
+                continue
+            lm, wm = np.mean(lam[ok]), np.mean(Wv[ok])
+            if lm <= 0 or wm <= 0:
+                continue
+            sp_lam.append((lam[ok].max() - lam[ok].min()) / lm)
+            sp_W.append((Wv[ok].max() - Wv[ok].min()) / wm)
+        if not sp_W:
+            print(f"{name:13s} {spl.alpha:6.3f}   (no in-hull I-slice with >=10 T points)")
+            continue
+        sp_lam, sp_W = np.array(sp_lam), np.array(sp_W)
+        ratio = sp_W / sp_lam
+        print(f"{name:13s} {spl.alpha:6.3f} "
+              f"{np.median(sp_W):9.3f} {np.percentile(sp_W, 90):9.3f} "
+              f"{np.median(ratio):10.3f} {np.percentile(ratio, 90):10.3f} {len(sp_W):4d}")
