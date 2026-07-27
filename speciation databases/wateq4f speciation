@@ -1,7 +1,5 @@
 """
-speciate_wateq4f.py
-
-Recompute the speciation table with Reaktoro using the PHREEQC WATEQ4F
+the speciation table with Reaktoro using the PHREEQC WATEQ4F
 database (wateq4f.dat) - the same activity + ion-association framework
 McCleskey et al. used - so the conductivity model can be compared against
 McCleskey on equal chemical footing.
