@@ -12,9 +12,7 @@
 #   - Single-salt concentrations to ~150 g/kg_H2O; mixture TOTAL molality 0.05-0.7 mol/kg.
 #   - Used for cross-lab validation (MgSO4) and NaCl.
 #
-# Units: source reports conductivity in S/m; this file is in S/m. (The working
-#   library stored the same data as mS/cm = S/m x 10; converted here by dividing
-#   by 10. Verified physically sensible - NO factor-of-10 error.)
+# Units: source reports conductivity in S/m; this file is in S/m. 
 #
 # Mixture convention: for compound NaCl:MgSO4:Na2CO3_1:1:1, concentration_molal is
 #   the TOTAL molality; each of the three salts is present at total/3 (equal moles).
