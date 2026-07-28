@@ -1,0 +1,69 @@
+"""
+# Salt mixture conductivity data (split per-component) -
+# Cortes et al. (2026) + Mahboub et al. (2026)
+#
+# Machine-friendly version for speciation input (Reaktoro/PHREEQC) and
+# additivity testing: each component salt and its molality is an explicit column.
+#
+# Sources:
+#   Cortes2026: benchtop probe; 5/10/20 C; 0.1 MPa. Original concentrations in
+#     mol/L; molal ~ molar assumed for dilute solutions (no conversion).
+#   Mahboub: doi:10.1021/acsearthspacechem.5c00333; -10 to 25 C; 0.1 MPa; S/m.
+#
+# Columns:
+#   compound: mixture label (A:B_r:r or A:B:C_r:r:r)
+#   n_components: number of component salts
+#   component_i / molality_i: salt formula and its molality (mol/kg_H2O)
+#   total_molality: sum of component molalities (mol/kg_H2O)
+#   temperature_C, temperature_K, pressure_MPa: conditions (0.1 MPa = atm)
+#   conductivity_Sm: electrical conductivity (S/m)
+#   replicate, source, notes: provenance
+"""
+
+compound,n_components,component_1,molality_1,component_2,molality_2,component_3,molality_3,total_molality,temperature_C,temperature_K,pressure_MPa,conductivity_Sm,replicate,source,notes
+Na2SO4:KCl_1:1,2,Na2SO4,0.5,KCl,0.5,,,1.0,5.0,278.15,0.1,7.048,1,Cortes2026,"1:1 mixture, 0.5 M/L each; molal ~ molar assumed (dilute), no conversion"
+Na2SO4:KCl_1:1,2,Na2SO4,0.75,KCl,0.75,,,1.5,5.0,278.15,0.1,9.365,1,Cortes2026,"1:1 mixture, 0.75 M/L each; molal ~ molar assumed (dilute), no conversion"
+Na2SO4:KCl_1:1,2,Na2SO4,1.0,KCl,1.0,,,2.0,5.0,278.15,0.1,11.273,1,Cortes2026,"1:1 mixture, 1.0 M/L each; molal ~ molar assumed (dilute), no conversion"
+Na2SO4:KCl_1:1,2,Na2SO4,0.5,KCl,0.5,,,1.0,10.0,283.15,0.1,7.892,1,Cortes2026,"1:1 mixture, 0.5 M/L each; molal ~ molar assumed (dilute), no conversion"
+Na2SO4:KCl_1:1,2,Na2SO4,0.75,KCl,0.75,,,1.5,10.0,283.15,0.1,10.57,1,Cortes2026,"1:1 mixture, 0.75 M/L each; molal ~ molar assumed (dilute), no conversion"
+Na2SO4:KCl_1:1,2,Na2SO4,1.0,KCl,1.0,,,2.0,10.0,283.15,0.1,12.52,1,Cortes2026,"1:1 mixture, 1.0 M/L each; molal ~ molar assumed (dilute), no conversion"
+Na2SO4:KCl_1:1,2,Na2SO4,0.5,KCl,0.5,,,1.0,20.0,293.15,0.1,9.843,1,Cortes2026,"1:1 mixture, 0.5 M/L each; molal ~ molar assumed (dilute), no conversion"
+Na2SO4:KCl_1:1,2,Na2SO4,0.75,KCl,0.75,,,1.5,20.0,293.15,0.1,13.38,1,Cortes2026,"1:1 mixture, 0.75 M/L each; molal ~ molar assumed (dilute), no conversion"
+Na2SO4:KCl_1:1,2,Na2SO4,1.0,KCl,1.0,,,2.0,20.0,293.15,0.1,15.78,1,Cortes2026,"1:1 mixture, 1.0 M/L each; molal ~ molar assumed (dilute), no conversion"
+Na2SO4:KCl_2:1,2,Na2SO4,1.5,KCl,0.75,,,2.25,5.0,278.15,0.1,10.11,1,Cortes2026,"1.5:0.75 M/L Na2SO4:KCl; molal ~ molar assumed (dilute), no conversion"
+Na2SO4:KCl_2:1,2,Na2SO4,1.5,KCl,0.75,,,2.25,10.0,283.15,0.1,11.43,1,Cortes2026,"1.5:0.75 M/L Na2SO4:KCl; molal ~ molar assumed (dilute), no conversion"
+Na2SO4:KCl_2:1,2,Na2SO4,1.5,KCl,0.75,,,2.25,20.0,293.15,0.1,14.6,1,Cortes2026,"1.5:0.75 M/L Na2SO4:KCl; molal ~ molar assumed (dilute), no conversion"
+NaCl:MgSO4_1:1,2,NaCl,0.5,MgSO4,0.5,,,1.0,5.0,278.15,0.1,4.632,1,Cortes2026,"Original: 0.5 M/L; molal ~ molar assumed (dilute), no conversion | ASSUMED per-component (each salt at listed value), by analogy with Na2SO4:KCl 1:1 rows; verify with source"
+NaCl:MgSO4_1:1,2,NaCl,0.75,MgSO4,0.75,,,1.5,5.0,278.15,0.1,5.659000000000001,1,Cortes2026,"Original: 0.75 M/L; molal ~ molar assumed (dilute), no conversion | ASSUMED per-component (each salt at listed value), by analogy with Na2SO4:KCl 1:1 rows; verify with source"
+NaCl:MgSO4_1:1,2,NaCl,1.0,MgSO4,1.0,,,2.0,5.0,278.15,0.1,6.459999999999999,1,Cortes2026,"Original: 1.0 M/L; molal ~ molar assumed (dilute), no conversion | ASSUMED per-component (each salt at listed value), by analogy with Na2SO4:KCl 1:1 rows; verify with source"
+NaCl:MgSO4_1:1,2,NaCl,1.5,MgSO4,1.5,,,3.0,5.0,278.15,0.1,6.865,1,Cortes2026,"Original: 1.5 M/L; molal ~ molar assumed (dilute), no conversion | ASSUMED per-component (each salt at listed value), by analogy with Na2SO4:KCl 1:1 rows; verify with source"
+NaCl:MgSO4_1:1,2,NaCl,0.5,MgSO4,0.5,,,1.0,10.0,283.15,0.1,5.25,1,Cortes2026,"Original: 0.5 M/L; molal ~ molar assumed (dilute), no conversion | ASSUMED per-component (each salt at listed value), by analogy with Na2SO4:KCl 1:1 rows; verify with source"
+NaCl:MgSO4_1:1,2,NaCl,0.75,MgSO4,0.75,,,1.5,10.0,283.15,0.1,6.470999999999999,1,Cortes2026,"Original: 0.75 M/L; molal ~ molar assumed (dilute), no conversion | ASSUMED per-component (each salt at listed value), by analogy with Na2SO4:KCl 1:1 rows; verify with source"
+NaCl:MgSO4_1:1,2,NaCl,1.0,MgSO4,1.0,,,2.0,10.0,283.15,0.1,7.223000000000001,1,Cortes2026,"Original: 1.0 M/L; molal ~ molar assumed (dilute), no conversion | ASSUMED per-component (each salt at listed value), by analogy with Na2SO4:KCl 1:1 rows; verify with source"
+NaCl:MgSO4_1:1,2,NaCl,1.5,MgSO4,1.5,,,3.0,10.0,283.15,0.1,7.574,1,Cortes2026,"Original: 1.5 M/L; molal ~ molar assumed (dilute), no conversion | ASSUMED per-component (each salt at listed value), by analogy with Na2SO4:KCl 1:1 rows; verify with source"
+NaCl:MgSO4_1:1,2,NaCl,0.5,MgSO4,0.5,,,1.0,20.0,293.15,0.1,6.909000000000001,1,Cortes2026,"Original: 0.5 M/L; molal ~ molar assumed (dilute), no conversion | ASSUMED per-component (each salt at listed value), by analogy with Na2SO4:KCl 1:1 rows; verify with source"
+NaCl:MgSO4_1:1,2,NaCl,0.75,MgSO4,0.75,,,1.5,20.0,293.15,0.1,8.609,1,Cortes2026,"Original: 0.75 M/L; molal ~ molar assumed (dilute), no conversion | ASSUMED per-component (each salt at listed value), by analogy with Na2SO4:KCl 1:1 rows; verify with source"
+NaCl:MgSO4_1:1,2,NaCl,1.0,MgSO4,1.0,,,2.0,20.0,293.15,0.1,9.76,1,Cortes2026,"Original: 1.0 M/L; molal ~ molar assumed (dilute), no conversion | ASSUMED per-component (each salt at listed value), by analogy with Na2SO4:KCl 1:1 rows; verify with source"
+NaCl:MgSO4_1:1,2,NaCl,1.5,MgSO4,1.5,,,3.0,20.0,293.15,0.1,10.41,1,Cortes2026,"Original: 1.5 M/L; molal ~ molar assumed (dilute), no conversion | ASSUMED per-component (each salt at listed value), by analogy with Na2SO4:KCl 1:1 rows; verify with source"
+NaCl:MgSO4_1:2,2,NaCl,0.75,MgSO4,1.5,,,2.25,5.0,278.15,0.1,5.452,1,Cortes2026,"0.75:1.5 M/L NaCl:MgSO4; molal ~ molar assumed (dilute), no conversion"
+NaCl:MgSO4_1:2,2,NaCl,0.75,MgSO4,1.5,,,2.25,10.0,283.15,0.1,6.247999999999999,1,Cortes2026,"0.75:1.5 M/L NaCl:MgSO4; molal ~ molar assumed (dilute), no conversion"
+NaCl:MgSO4_1:2,2,NaCl,0.75,MgSO4,1.5,,,2.25,20.0,293.15,0.1,8.095,1,Cortes2026,"0.75:1.5 M/L NaCl:MgSO4; molal ~ molar assumed (dilute), no conversion"
+NaCl:MgSO4_2:1,2,NaCl,1.5,MgSO4,0.75,,,2.25,5.0,278.15,0.1,8.017,1,Cortes2026,"1.5:0.75 M/L NaCl:MgSO4; molal ~ molar assumed (dilute), no conversion"
+NaCl:MgSO4_2:1,2,NaCl,1.5,MgSO4,0.75,,,2.25,10.0,283.15,0.1,9.098,1,Cortes2026,"1.5:0.75 M/L NaCl:MgSO4; molal ~ molar assumed (dilute), no conversion"
+NaCl:MgSO4_2:1,2,NaCl,1.5,MgSO4,0.75,,,2.25,20.0,293.15,0.1,11.56,1,Cortes2026,"1.5:0.75 M/L NaCl:MgSO4; molal ~ molar assumed (dilute), no conversion"
+NaCl:MgSO4:Na2CO3_1:1:1,3,NaCl,0.016667,MgSO4,0.016667,Na2CO3,0.016667,0.05,-10.0,263.15,0.1,0.6065,1,Mahboub,"ternary 1:1:1 mol (NaCl:MgSO4:Na2CO3); concentration_molal = TOTAL molality, each salt = total/3"
+NaCl:MgSO4:Na2CO3_1:1:1,3,NaCl,0.016667,MgSO4,0.016667,Na2CO3,0.016667,0.05,-1.0,272.15,0.1,0.8441000000000001,1,Mahboub,"ternary 1:1:1 mol (NaCl:MgSO4:Na2CO3); concentration_molal = TOTAL molality, each salt = total/3"
+NaCl:MgSO4:Na2CO3_1:1:1,3,NaCl,0.016667,MgSO4,0.016667,Na2CO3,0.016667,0.05,20.0,293.15,0.1,1.3747,1,Mahboub,"ternary 1:1:1 mol (NaCl:MgSO4:Na2CO3); concentration_molal = TOTAL molality, each salt = total/3"
+NaCl:MgSO4:Na2CO3_1:1:1,3,NaCl,0.016667,MgSO4,0.016667,Na2CO3,0.016667,0.05,25.0,298.15,0.1,1.5123,1,Mahboub,"ternary 1:1:1 mol (NaCl:MgSO4:Na2CO3); concentration_molal = TOTAL molality, each salt = total/3"
+NaCl:MgSO4:Na2CO3_1:1:1,3,NaCl,0.033333,MgSO4,0.033333,Na2CO3,0.033333,0.1,-10.0,263.15,0.1,1.1355,1,Mahboub,"ternary 1:1:1 mol (NaCl:MgSO4:Na2CO3); concentration_molal = TOTAL molality, each salt = total/3"
+NaCl:MgSO4:Na2CO3_1:1:1,3,NaCl,0.033333,MgSO4,0.033333,Na2CO3,0.033333,0.1,-1.0,272.15,0.1,1.5227,1,Mahboub,"ternary 1:1:1 mol (NaCl:MgSO4:Na2CO3); concentration_molal = TOTAL molality, each salt = total/3"
+NaCl:MgSO4:Na2CO3_1:1:1,3,NaCl,0.033333,MgSO4,0.033333,Na2CO3,0.033333,0.1,20.0,293.15,0.1,2.4587,1,Mahboub,"ternary 1:1:1 mol (NaCl:MgSO4:Na2CO3); concentration_molal = TOTAL molality, each salt = total/3"
+NaCl:MgSO4:Na2CO3_1:1:1,3,NaCl,0.033333,MgSO4,0.033333,Na2CO3,0.033333,0.1,25.0,298.15,0.1,2.7045000000000003,1,Mahboub,"ternary 1:1:1 mol (NaCl:MgSO4:Na2CO3); concentration_molal = TOTAL molality, each salt = total/3"
+NaCl:MgSO4:Na2CO3_1:1:1,3,NaCl,0.133333,MgSO4,0.133333,Na2CO3,0.133333,0.4,-10.0,263.15,0.1,3.2887,1,Mahboub,"ternary 1:1:1 mol (NaCl:MgSO4:Na2CO3); concentration_molal = TOTAL molality, each salt = total/3"
+NaCl:MgSO4:Na2CO3_1:1:1,3,NaCl,0.133333,MgSO4,0.133333,Na2CO3,0.133333,0.4,-1.0,272.15,0.1,4.029,1,Mahboub,"ternary 1:1:1 mol (NaCl:MgSO4:Na2CO3); concentration_molal = TOTAL molality, each salt = total/3"
+NaCl:MgSO4:Na2CO3_1:1:1,3,NaCl,0.133333,MgSO4,0.133333,Na2CO3,0.133333,0.4,20.0,293.15,0.1,6.6827,1,Mahboub,"ternary 1:1:1 mol (NaCl:MgSO4:Na2CO3); concentration_molal = TOTAL molality, each salt = total/3"
+NaCl:MgSO4:Na2CO3_1:1:1,3,NaCl,0.133333,MgSO4,0.133333,Na2CO3,0.133333,0.4,25.0,298.15,0.1,7.3509,1,Mahboub,"ternary 1:1:1 mol (NaCl:MgSO4:Na2CO3); concentration_molal = TOTAL molality, each salt = total/3"
+NaCl:MgSO4:Na2CO3_1:1:1,3,NaCl,0.233333,MgSO4,0.233333,Na2CO3,0.233333,0.7,-10.0,263.15,0.1,3.087,1,Mahboub,"ternary 1:1:1 mol (NaCl:MgSO4:Na2CO3); concentration_molal = TOTAL molality, each salt = total/3"
+NaCl:MgSO4:Na2CO3_1:1:1,3,NaCl,0.233333,MgSO4,0.233333,Na2CO3,0.233333,0.7,-1.0,272.15,0.1,3.5753,1,Mahboub,"ternary 1:1:1 mol (NaCl:MgSO4:Na2CO3); concentration_molal = TOTAL molality, each salt = total/3"
+NaCl:MgSO4:Na2CO3_1:1:1,3,NaCl,0.233333,MgSO4,0.233333,Na2CO3,0.233333,0.7,20.0,293.15,0.1,5.882,1,Mahboub,"ternary 1:1:1 mol (NaCl:MgSO4:Na2CO3); concentration_molal = TOTAL molality, each salt = total/3"
+NaCl:MgSO4:Na2CO3_1:1:1,3,NaCl,0.233333,MgSO4,0.233333,Na2CO3,0.233333,0.7,25.0,298.15,0.1,6.4702,1,Mahboub,"ternary 1:1:1 mol (NaCl:MgSO4:Na2CO3); concentration_molal = TOTAL molality, each salt = total/3"
