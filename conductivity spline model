@@ -46,11 +46,11 @@ os.makedirs(FIG_DIR, exist_ok=True)
 
 # ---- MASTER SWITCHES -------------------------------------------------
 SQRT_I = True
-WALDEN = True
+WALDEN = False
 AMBIENT_ONLY = True   # False -> full pressure mode (plumbing intact)
-WALDEN_ALPHA_FIT = True
+WALDEN_ALPHA_FIT = False
 INCLUDE_PAN = False
-FIT_MODE = 'joint'    # 'joint' (v6 simultaneous fit) or 'sequential' (v5.2)
+FIT_MODE = 'sequential'    # 'joint' (v6 simultaneous fit) or 'sequential' (v5.2)
 JOINT_INCLUDE_ALL = False
 # True  -> PRODUCTION fit: K2SO4, MgSO4, CaSO4 equations ALSO train the
 #          joint system (all available data improves the surfaces). The
@@ -159,7 +159,9 @@ class WaterViscosity:
     250.15 K). Above 372 K at low P the liquid does not exist at the
     nominal pressure, so the SATURATED-LIQUID state is used (liquid eta is
     nearly P-independent there); table extends to 623.15 K."""
-    T_MIN, T_MAX, N_GRID = 250.15, 623.15, 400
+    T_MIN, T_MAX, N_GRID = 250.15, 623.15, 200  # ~2 K spacing; cubic spline
+    # interpolation error is negligible, and table builds at many pressures
+    # (ratio tests) stay fast.
     def __init__(self):
         self._cache = {}
     def _key(self, P_MPa):
@@ -176,7 +178,10 @@ class WaterViscosity:
             for T in np.linspace(self.T_MIN, self.T_MAX, self.N_GRID):
                 try:
                     w = None
-                    if T > 372.0:
+                    # saturation branch only relevant when the requested P can
+                    # fall below Psat(T): Psat(623 K) ~ 16.5 MPa, so any build
+                    # at P > 22 MPa is pure compressed liquid - skip the check.
+                    if T > 372.0 and float(P_MPa) < 22.0:
                         sat = IAPWS95(T=float(T), x=0)
                         Psat = getattr(sat, 'P', None)
                         if Psat is not None and float(P_MPa) < Psat:
@@ -405,9 +410,10 @@ class IonSpline:
         if np.any(np.isnan(result)):
             raise ValueError(f"{self.label} spline: query point(s) outside the convex hull.")
         return result if result.size > 1 else result.item()
+
+    
+    
     def ev_extrap(self, t_query, I_query, mode='linear', T_max_K=30.0, P_MPa=None):
-        if not WALDEN:
-            raise RuntimeError('ev_extrap requires WALDEN = True.')
         T = np.atleast_1d(np.asarray(t_query, dtype=float))
         I = np.atleast_1d(np.asarray(I_query, dtype=float))
         x = self._x(I)
@@ -419,9 +425,17 @@ class IonSpline:
             W = W + self._spline.ev(T_edge, x, dx=1) * (T - T_edge)
         elif mode != 'constant':
             raise ValueError(f"ev_extrap mode must be 'constant' or 'linear', got {mode}")
-        P = self.P_ref if P_MPa is None else P_MPa
-        lam = W / VISC.eta_multi(T, P) ** self.alpha
+        if WALDEN:
+            # WALDEN: the spline stores W = lambda * eta^alpha, so divide the
+            # extrapolated W by viscosity to recover lambda.
+            P = self.P_ref if P_MPa is None else P_MPa
+            lam = W / VISC.eta_multi(T, P) ** self.alpha
+        else:
+            # Non-Walden: the spline already stores lambda directly (alpha=1,
+            # no viscosity factor), so the extrapolated W *is* lambda.
+            lam = W
         return np.where(ok, lam, np.nan)
+    
     def dT(self, t_query, I_query, P_MPa=None):
         t_query, I_query = np.atleast_1d(t_query), np.atleast_1d(I_query)
         dW = self._spline.ev(t_query, self._x(I_query), dx=1, dy=0)
