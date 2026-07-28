@@ -5,10 +5,14 @@
 #
 # Data description:
 #   - Temperatures 5, 10, 20 C; atmospheric pressure (0.1 MPa)
-#   - KCl, NaCl, Na2SO4 (subset used here)
+#   - Single salts: KCl, NaCl, Na2SO4
+#   - Salt mixtures: Na2SO4:KCl (1:1, 2:1), NaCl:MgSO4 (1:1, 1:2, 2:1)
 #   - Concentrations were prepared per-litre in the lab but the reported figure
 #     is molality (mol/kg): values are used directly as concentration_molal,
 #     with NO molar->molal conversion.
+#   - For mixtures, concentration_molal refers to the ratio basis given in notes
+#     (e.g. "1:1 mixture, 0.5 M/L each" means 0.5 of each component;
+#     "2:1" rows list total per-component amounts in notes, e.g. 1.5:0.75)
 #
 # CAVEAT: one KCl row (10 C, 1.5) is a flagged transcription duplicate - see notes.
 #
@@ -66,3 +70,33 @@ NaCl,1.5,20.0,293.15,0.1,11.43,3,Cortes2026,"1.5 M/L, replicate 3; value is mola
 NaCl,1.5,20.0,293.15,0.1,11.63,4,Cortes2026,"1.5 M/L, replicate 4; value is molality, used directly (no conversion)"
 NaCl,1.5,20.0,293.15,0.1,11.66,5,Cortes2026,"1.5 M/L, replicate 5; value is molality, used directly (no conversion)"
 NaCl,1.5,20.0,293.15,0.1,11.68,6,Cortes2026,"1.5 M/L, replicate 6; value is molality, used directly (no conversion)"
+Na2SO4:KCl_1:1,0.5,5.0,278.15,0.1,7.048,1,Cortes2026,"1:1 mixture, 0.5 M/L each; value is molality, used directly (no conversion)"
+Na2SO4:KCl_1:1,0.75,5.0,278.15,0.1,9.365,1,Cortes2026,"1:1 mixture, 0.75 M/L each; value is molality, used directly (no conversion)"
+Na2SO4:KCl_1:1,1.0,5.0,278.15,0.1,11.273,1,Cortes2026,"1:1 mixture, 1.0 M/L each; value is molality, used directly (no conversion)"
+Na2SO4:KCl_1:1,0.5,10.0,283.15,0.1,7.892,1,Cortes2026,"1:1 mixture, 0.5 M/L each; value is molality, used directly (no conversion)"
+Na2SO4:KCl_1:1,0.75,10.0,283.15,0.1,10.57,1,Cortes2026,"1:1 mixture, 0.75 M/L each; value is molality, used directly (no conversion)"
+Na2SO4:KCl_1:1,1.0,10.0,283.15,0.1,12.52,1,Cortes2026,"1:1 mixture, 1.0 M/L each; value is molality, used directly (no conversion)"
+Na2SO4:KCl_1:1,0.5,20.0,293.15,0.1,9.843,1,Cortes2026,"1:1 mixture, 0.5 M/L each; value is molality, used directly (no conversion)"
+Na2SO4:KCl_1:1,0.75,20.0,293.15,0.1,13.38,1,Cortes2026,"1:1 mixture, 0.75 M/L each; value is molality, used directly (no conversion)"
+Na2SO4:KCl_1:1,1.0,20.0,293.15,0.1,15.780000000000001,1,Cortes2026,"1:1 mixture, 1.0 M/L each; value is molality, used directly (no conversion)"
+Na2SO4:KCl_2:1,1.5,5.0,278.15,0.1,10.11,1,Cortes2026,"1.5:0.75 M/L Na2SO4:KCl; value is molality, used directly (no conversion)"
+Na2SO4:KCl_2:1,1.5,10.0,283.15,0.1,11.43,1,Cortes2026,"1.5:0.75 M/L Na2SO4:KCl; value is molality, used directly (no conversion)"
+Na2SO4:KCl_2:1,1.5,20.0,293.15,0.1,14.6,1,Cortes2026,"1.5:0.75 M/L Na2SO4:KCl; value is molality, used directly (no conversion)"
+NaCl:MgSO4_1:1,0.5,5.0,278.15,0.1,4.632,1,Cortes2026,"Original: 0.5 M/L; value is molality, used directly (no conversion)"
+NaCl:MgSO4_1:1,0.75,5.0,278.15,0.1,5.659000000000001,1,Cortes2026,"Original: 0.75 M/L; value is molality, used directly (no conversion)"
+NaCl:MgSO4_1:1,1.0,5.0,278.15,0.1,6.459999999999999,1,Cortes2026,"Original: 1.0 M/L; value is molality, used directly (no conversion)"
+NaCl:MgSO4_1:1,1.5,5.0,278.15,0.1,6.865,1,Cortes2026,"Original: 1.5 M/L; value is molality, used directly (no conversion)"
+NaCl:MgSO4_1:1,0.5,10.0,283.15,0.1,5.25,1,Cortes2026,"Original: 0.5 M/L; value is molality, used directly (no conversion)"
+NaCl:MgSO4_1:1,0.75,10.0,283.15,0.1,6.470999999999999,1,Cortes2026,"Original: 0.75 M/L; value is molality, used directly (no conversion)"
+NaCl:MgSO4_1:1,1.0,10.0,283.15,0.1,7.223000000000001,1,Cortes2026,"Original: 1.0 M/L; value is molality, used directly (no conversion)"
+NaCl:MgSO4_1:1,1.5,10.0,283.15,0.1,7.574,1,Cortes2026,"Original: 1.5 M/L; value is molality, used directly (no conversion)"
+NaCl:MgSO4_1:1,0.5,20.0,293.15,0.1,6.909000000000001,1,Cortes2026,"Original: 0.5 M/L; value is molality, used directly (no conversion)"
+NaCl:MgSO4_1:1,0.75,20.0,293.15,0.1,8.609,1,Cortes2026,"Original: 0.75 M/L; value is molality, used directly (no conversion)"
+NaCl:MgSO4_1:1,1.0,20.0,293.15,0.1,9.76,1,Cortes2026,"Original: 1.0 M/L; value is molality, used directly (no conversion)"
+NaCl:MgSO4_1:1,1.5,20.0,293.15,0.1,10.41,1,Cortes2026,"Original: 1.5 M/L; value is molality, used directly (no conversion)"
+NaCl:MgSO4_1:2,0.75,5.0,278.15,0.1,5.452,1,Cortes2026,"0.75:1.5 M/L NaCl:MgSO4; value is molality, used directly (no conversion)"
+NaCl:MgSO4_1:2,0.75,10.0,283.15,0.1,6.247999999999999,1,Cortes2026,"0.75:1.5 M/L NaCl:MgSO4; value is molality, used directly (no conversion)"
+NaCl:MgSO4_1:2,0.75,20.0,293.15,0.1,8.095,1,Cortes2026,"0.75:1.5 M/L NaCl:MgSO4; value is molality, used directly (no conversion)"
+NaCl:MgSO4_2:1,1.5,5.0,278.15,0.1,8.017,1,Cortes2026,"1.5:0.75 M/L NaCl:MgSO4; value is molality, used directly (no conversion)"
+NaCl:MgSO4_2:1,1.5,10.0,283.15,0.1,9.098,1,Cortes2026,"1.5:0.75 M/L NaCl:MgSO4; value is molality, used directly (no conversion)"
+NaCl:MgSO4_2:1,1.5,20.0,293.15,0.1,11.559999999999999,1,Cortes2026,"1.5:0.75 M/L NaCl:MgSO4; value is molality, used directly (no conversion)"
