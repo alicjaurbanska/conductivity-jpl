@@ -1,25 +1,3 @@
-"""
-# Salt mixture conductivity data (split per-component) -
-# Cortes et al. (2026) + Mahboub et al. (2026)
-#
-# Machine-friendly version for speciation input (Reaktoro/PHREEQC) and
-# additivity testing: each component salt and its molality is an explicit column.
-#
-# Sources:
-#   Cortes2026: benchtop probe; 5/10/20 C; 0.1 MPa. Original concentrations in
-#     mol/L; molal ~ molar assumed for dilute solutions (no conversion).
-#   Mahboub: doi:10.1021/acsearthspacechem.5c00333; -10 to 25 C; 0.1 MPa; S/m.
-#
-# Columns:
-#   compound: mixture label (A:B_r:r or A:B:C_r:r:r)
-#   n_components: number of component salts
-#   component_i / molality_i: salt formula and its molality (mol/kg_H2O)
-#   total_molality: sum of component molalities (mol/kg_H2O)
-#   temperature_C, temperature_K, pressure_MPa: conditions (0.1 MPa = atm)
-#   conductivity_Sm: electrical conductivity (S/m)
-#   replicate, source, notes: provenance
-"""
-
 compound,n_components,component_1,molality_1,component_2,molality_2,component_3,molality_3,total_molality,temperature_C,temperature_K,pressure_MPa,conductivity_Sm,replicate,source,notes
 Na2SO4:KCl_1:1,2,Na2SO4,0.5,KCl,0.5,,,1.0,5.0,278.15,0.1,7.048,1,Cortes2026,"1:1 mixture, 0.5 M/L each; molal ~ molar assumed (dilute), no conversion"
 Na2SO4:KCl_1:1,2,Na2SO4,0.75,KCl,0.75,,,1.5,5.0,278.15,0.1,9.365,1,Cortes2026,"1:1 mixture, 0.75 M/L each; molal ~ molar assumed (dilute), no conversion"
