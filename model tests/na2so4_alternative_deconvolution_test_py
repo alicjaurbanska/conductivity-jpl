@@ -1,0 +1,434 @@
+# ==========================================================
+# CELL 3 - ALTERNATIVE DECONVOLUTION CHAIN (v7)
+#   SO4 2- derived from K2SO4 (via K+) instead of Na2SO4 (via Na+)
+#   -> Na2SO4 becomes the held-out additivity test
+#   -> direct comparison of the two SO4 2- ion surfaces
+# ==========================================================
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import warnings
+from scipy import stats as sstats
+
+for _name in ('model', 'salt_dfs', 'spec_lookup', 'save_fig', 'FIG_DIR',
+              'FIT_MODE', 'REFERENCE_PRESSURE_MPA', 'IonConductivityModel',
+              'subtract_ion_molar', 'ION_FREE_COL', 'PAIR_LAMBDA_FOR_COL',
+              'SPECIATION_DB', 'SEQ_SPLINES'):
+    if _name not in globals():
+        raise NameError(f"'{_name}' not found - run Cell 1 first.")
+if 'mccleskey2012_conductivity' not in globals():
+    raise NameError("mccleskey2012_conductivity not found - run the MC12 cell first.")
+
+MC12_T_VALID_C = (0.0, 95.0)
+PCT_STABLE_MOLALITY = 0.01
+
+print("=== ALT chain: K2SO4 -> SO4 2- ; Na2SO4 held out ===")
+print("Chain provenance (ALT model): K+/Cl- from KCl transport numbers, "
+      "Na+ from NaCl, SO4 2- from K2SO4 (KSO4- pair subtracted via the "
+      "shared MC12 submodel). Na2SO4 data never enter this chain, so the "
+      "Na2SO4 reconstruction below is a genuine held-out test.")
+print("CAVEAT (shared submodel): the NaSO4- pair lambda used at prediction "
+      "time is the MC12 Table 1 expression, shared with the MC12 baseline; "
+      "the comparison is independent only in the free-ion channel. Pair "
+      "share of kappa is quantified below.")
+
+# ==========================================================
+# 0. SHARED DIAGNOSTIC HELPERS (self-contained)
+# ==========================================================
+
+def alt_fit_quality_stats(real, reconstructed):
+    real = np.asarray(real, dtype=float)
+    reconstructed = np.asarray(reconstructed, dtype=float)
+    resid = reconstructed - real
+    rmse = np.sqrt(np.mean(resid**2))
+    mae = np.mean(np.abs(resid))
+    ss_res = np.sum(resid**2)
+    ss_tot = np.sum((real - real.mean())**2)
+    r2 = 1 - ss_res/ss_tot if ss_tot > 0 else np.nan
+    slope, intercept = np.polyfit(real, reconstructed, 1)
+    return {'rmse': rmse, 'mae': mae, 'r2_vs_1to1_line': r2,
+            'best_fit_slope': slope, 'best_fit_intercept': intercept,
+            'n': len(real)}
+
+def alt_print_fit_quality(label, real, reconstructed, units='mS/cm'):
+    s = alt_fit_quality_stats(real, reconstructed)
+    print(f"\n  Fit quality ({label}):")
+    print(f"    n = {s['n']}")
+    print(f"    RMSE: {s['rmse']:.4f} {units}   MAE: {s['mae']:.4f} {units}")
+    print(f"    R-squared vs perfect 1:1 line: {s['r2_vs_1to1_line']:.4f}")
+    print(f"    Best-fit: reconstructed = {s['best_fit_slope']:.4f} x real "
+          f"+ {s['best_fit_intercept']:.4f}")
+    return s
+
+def alt_diagnose_error_structure(label, T_vals, M_vals, pct_dev):
+    T_vals = np.asarray(T_vals, dtype=float)
+    M_vals = np.asarray(M_vals, dtype=float)
+    pct_dev = np.asarray(pct_dev, dtype=float)
+    print(f"\n  Error structure diagnosis ({label}):")
+    if len(T_vals) < 4:
+        print("    Too few points for statistical breakdown.")
+        return
+    if len(set(M_vals)) > 1:
+        r_m, p_m = sstats.pearsonr(M_vals, pct_dev)
+        print(f"    dev vs molality:    r={r_m:+.3f} (p={p_m:.4f})")
+    if len(set(T_vals)) > 1:
+        r_t, p_t = sstats.pearsonr(T_vals, pct_dev)
+        print(f"    dev vs temperature: r={r_t:+.3f} (p={p_t:.4f})")
+
+# ==========================================================
+# 1. BUILD THE ALT SO4 SPLINE FROM K2SO4
+# ==========================================================
+
+d_k2_all = salt_dfs['K2SO4']
+d_k2 = d_k2_all[d_k2_all['Ambient']].copy()
+print(f"\nK2SO4 source rows for the ALT deconvolution: {len(d_k2)} ambient "
+      f"of {len(d_k2_all)} total (non-ambient rows belong to the staged "
+      f"pressure test and never enter fitting).")
+
+# Clone model: production splines for K/Cl/Na/Mg/Ca/NH4; SO4 gets REPLACED
+# by the K2SO4-derived surface inside model_alt only.
+model_alt = IonConductivityModel(speciation=spec_lookup)
+for _ion, _spl in SEQ_SPLINES.items():
+    model_alt.add_ion(_ion, _spl)
+
+spline_so4_alt, so4a_t_range, so4a_I_range, df_so4_alt = subtract_ion_molar(
+    d_k2, 'K2SO4', known_ion='K', model=model_alt,
+    new_ion_pretty_label='SO4 2- (from K2SO4, ALT chain)',
+    known_ion_extrap_mode='linear')
+
+spline_so4_seq = SEQ_SPLINES['SO4']
+print(f"\nSO4 surfaces available:")
+print(f"  production (from Na2SO4): T {spline_so4_seq.t_range[0]:.1f}-"
+      f"{spline_so4_seq.t_range[1]:.1f} K, I {spline_so4_seq.I_range[0]:.4f}-"
+      f"{spline_so4_seq.I_range[1]:.4f}, alpha={spline_so4_seq.alpha:.4f}")
+print(f"  ALT        (from K2SO4):  T {spline_so4_alt.t_range[0]:.1f}-"
+      f"{spline_so4_alt.t_range[1]:.1f} K, I {spline_so4_alt.I_range[0]:.4f}-"
+      f"{spline_so4_alt.I_range[1]:.4f}, alpha={spline_so4_alt.alpha:.4f}")
+
+# ==========================================================
+# 2. SO4 SURFACE COMPARISON (hull intersection)
+# ==========================================================
+
+T_lo = max(spline_so4_seq.t_range[0], spline_so4_alt.t_range[0])
+T_hi = min(spline_so4_seq.t_range[1], spline_so4_alt.t_range[1])
+I_lo = max(spline_so4_seq.I_range[0], spline_so4_alt.I_range[0], 1e-5)
+I_hi = min(spline_so4_seq.I_range[1], spline_so4_alt.I_range[1])
+if T_hi <= T_lo or I_hi <= I_lo:
+    raise RuntimeError("SO4 surfaces have no overlapping (T, I) range.")
+print(f"\nOverlap window: T {T_lo:.1f}-{T_hi:.1f} K, "
+      f"I_eff {I_lo:.4f}-{I_hi:.4f} mol/kg")
+
+Tg, Ig = np.meshgrid(np.linspace(T_lo, T_hi, 80),
+                     np.geomspace(I_lo, I_hi, 80))
+Tf, If = Tg.ravel(), Ig.ravel()
+lam_seq = spline_so4_seq.ev_or_nan(Tf, If)
+lam_alt = spline_so4_alt.ev_or_nan(Tf, If)
+both = np.isfinite(lam_seq) & np.isfinite(lam_alt)
+pct_diff = np.full_like(lam_seq, np.nan)
+pct_diff[both] = 100.0 * (lam_alt[both] - lam_seq[both]) / lam_seq[both]
+
+print(f"\nSO4 lambda comparison on hull intersection "
+      f"({int(both.sum())}/{len(Tf)} grid points inside both hulls):")
+print(f"  mean signed diff (ALT - production): {np.nanmean(pct_diff):+.2f}%")
+print(f"  mean abs diff:  {np.nanmean(np.abs(pct_diff)):.2f}%")
+print(f"  max abs diff:   {np.nanmax(np.abs(pct_diff)):.2f}%")
+r_I = sstats.pearsonr(If[both], pct_diff[both])
+r_T = sstats.pearsonr(Tf[both], pct_diff[both])
+print(f"  diff vs I_eff: r={r_I[0]:+.3f} (p={r_I[1]:.4f})   "
+      f"diff vs T: r={r_T[0]:+.3f} (p={r_T[1]:.4f})")
+print("  Interpretation guide: an I-correlated difference is the expected "
+      "signature of the salt-specific viscosity stowaway on the I axis "
+      "(K2SO4 vs Na2SO4 solution viscosities diverge with concentration); "
+      "a flat multiplicative offset would instead point at the KSO4-/NaSO4- "
+      "pair-lambda or transport-number channels.")
+
+# --- difference map ---
+fig, ax = plt.subplots(figsize=(6.5, 4.5))
+vmax = max(np.nanmax(np.abs(pct_diff)), 1.0)
+sc = ax.scatter(Tf[both], If[both], c=pct_diff[both], cmap='RdBu_r',
+                vmin=-vmax, vmax=vmax, s=14)
+plt.colorbar(sc, ax=ax, label='(ALT - production) / production (%)')
+ax.set_yscale('log')
+ax.set_xlabel('Temperature (K)')
+ax.set_ylabel(r'I$_{eff}$ (mol kg$^{-1}$)')
+ax.set_title(r'SO$_4^{2-}$ surface: K$_2$SO$_4$-derived vs Na$_2$SO$_4$-derived')
+save_fig(fig, 'so4_surface_difference_map')
+plt.show()
+
+# --- isotherm slices with derived data points from both chains ---
+fig, ax = plt.subplots(figsize=(6.8, 4.6))
+T_slices = np.linspace(T_lo + 1, T_hi - 1, 4)
+cmap = plt.get_cmap('plasma')
+I_line = np.geomspace(I_lo, I_hi, 150)
+for i, tval in enumerate(T_slices):
+    color = cmap(i / max(len(T_slices) - 1, 1))
+    T_line = np.full_like(I_line, tval)
+    y_seq = spline_so4_seq.ev_or_nan(T_line, I_line)
+    y_alt = spline_so4_alt.ev_or_nan(T_line, I_line)
+    ok_s, ok_a = np.isfinite(y_seq), np.isfinite(y_alt)
+    ax.plot(I_line[ok_s], y_seq[ok_s], color=color, lw=1.4,
+            label=f'{tval:.0f} K')
+    ax.plot(I_line[ok_a], y_alt[ok_a], color=color, lw=1.2, ls='--')
+ax.scatter(df_so4_ion['I'], df_so4_ion['Lambda'], s=12, color='0.3',
+           alpha=0.5, label='derived pts (Na2SO4 chain)')
+ax.scatter(df_so4_alt['I'], df_so4_alt['Lambda'], s=14, facecolors='none',
+           edgecolors='green', alpha=0.7, label='derived pts (K2SO4 chain)')
+ax.set_xscale('log')
+ax.set_xlabel(r'I$_{eff}$ (mol kg$^{-1}$)')
+ax.set_ylabel(r'$\lambda_{SO_4}$ (mS cm$^{-1}$ (mol kg$^{-1}$)$^{-1}$)')
+ax.set_title(r'SO$_4^{2-}$ isotherms: solid = Na$_2$SO$_4$-derived, '
+             r'dashed = K$_2$SO$_4$-derived')
+ax.legend(fontsize=8, ncol=2)
+save_fig(fig, 'so4_surface_isotherm_slices')
+plt.show()
+
+# ==========================================================
+# 3. Na2SO4 HELD-OUT RECONSTRUCTION (ALT model)
+# ==========================================================
+
+d = salt_dfs['Na2SO4'].reset_index(drop=True)  # FIT salt -> all ambient
+T_K = d['temp_K'].values
+T_C = d['Temperature'].values
+M = d['Molality'].values
+I_eff = d['I'].values
+kappa_meas = d['Conductivity'].values
+Source = d['Source'].values
+print(f"\nNa2SO4: {len(d)} ambient rows enter the held-out test "
+      f"(sources: {sorted(set(Source))}).")
+
+free = {}
+for ion, col in ION_FREE_COL.items():
+    if col in d.columns:
+        free[ion] = np.nan_to_num(d[col].values)
+pairs = {}
+for col, key in PAIR_LAMBDA_FOR_COL.items():
+    if col in d.columns:
+        pairs[key] = np.nan_to_num(d[col].values)
+if 'm_pair_MgSO4' in d.columns:
+    pairs['MgSO4'] = np.nan_to_num(d['m_pair_MgSO4'].values)
+comp = {'I_eff': I_eff, 'free_molality': free, 'pair_molality': pairs,
+        'speciation_source': SPECIATION_DB, 'sample_id': 'Na2SO4 held-out (ALT)'}
+
+kappa_alt, diag = model_alt.predict_conductivity(
+    comp, T_K, REFERENCE_PRESSURE_MPA, extrap_mode='linear',
+    return_diagnostics=True)
+kappa_alt = np.atleast_1d(kappa_alt)
+
+n_extrap = np.zeros(len(d), dtype=bool)
+for sp, flag in diag['flags']['out_of_hull'].items():
+    k = int(np.sum(flag))
+    if k:
+        print(f"  {sp}: {k} point(s) outside the ion-surface hull (unrecoverable).")
+for sp, flag in diag['flags']['extrapolated'].items():
+    k = int(np.sum(flag))
+    if k:
+        print(f"  {sp}: {k} point(s) recovered via cold linear extrapolation.")
+    n_extrap |= flag
+usable = np.isfinite(kappa_alt)
+print(f"Usable: {int(usable.sum())}/{len(d)} points "
+      f"({int(n_extrap[usable].sum())} use cold-extrapolated ion lambdas).")
+if usable.sum() == 0:
+    raise RuntimeError("No usable Na2SO4 points inside ALT coverage.")
+
+pair_kappa = diag['per_pair_kappa'].get('NaSO4', np.zeros_like(kappa_alt))
+pair_frac = np.where(kappa_alt > 0, pair_kappa / kappa_alt, np.nan)
+pf = pair_frac[usable]
+print(f"NaSO4- pair share of predicted kappa (shared MC12 submodel): "
+      f"min={np.nanmin(pf):.1%}, median={np.nanmedian(pf):.1%}, "
+      f"max={np.nanmax(pf):.1%}.")
+
+# --- production model on the same rows: IN-SAMPLE reference only ---
+kappa_prod = np.atleast_1d(model.predict_conductivity(
+    comp, T_K, REFERENCE_PRESSURE_MPA, extrap_mode='linear'))
+
+# --- MC12 baseline, same speciation ---
+mc12_species = {'Na+': d['m_free_Na'].values, 'SO4-2': d['m_free_SO4'].values}
+if 'm_pair_NaSO4' in d.columns:
+    mc12_species['NaSO4-'] = np.nan_to_num(d['m_pair_NaSO4'].values)
+with warnings.catch_warnings():
+    warnings.simplefilter('ignore')
+    kappa_mc12 = np.atleast_1d(mccleskey2012_conductivity(
+        mc12_species, T_C, I_eff_molkg=I_eff,
+        speciation_source=SPECIATION_DB, validate_range=False).sigma_mScm)
+in_mc12_range = (T_C >= MC12_T_VALID_C[0]) & (T_C <= MC12_T_VALID_C[1]) & (I_eff <= 1.0)
+n_out = int((~in_mc12_range & usable).sum())
+if n_out:
+    print(f"MC12 validity note: {n_out} usable point(s) lie outside 0-95 C / "
+          f"I <= 1 mol/kg; MC12 extrapolates its Table 1 polynomials there. "
+          f"Stats reported both ways below.")
+
+# ==========================================================
+# 4. DEVIATION METRICS
+# ==========================================================
+
+u = usable
+dev_alt  = 100.0 * (kappa_alt[u]  - kappa_meas[u]) / kappa_meas[u]
+dev_mc12 = 100.0 * (kappa_mc12[u] - kappa_meas[u]) / kappa_meas[u]
+dev_prod = 100.0 * (kappa_prod[u] - kappa_meas[u]) / kappa_meas[u]
+Tu_K, Tu_C, Mu, Iu, Su, Zu = T_K[u], T_C[u], M[u], I_eff[u], Source[u], kappa_meas[u]
+stable = Mu > PCT_STABLE_MOLALITY
+in_rng_u = in_mc12_range[u]
+
+def _dev_line(name, dev, mask):
+    if mask.sum() == 0:
+        print(f"  {name}: no points in this subset.")
+        return
+    print(f"  {name}: mean signed {np.mean(dev[mask]):+.2f}%   "
+          f"mean abs {np.mean(np.abs(dev[mask])):.2f}%   "
+          f"max abs {np.max(np.abs(dev[mask])):.2f}%   (n={int(mask.sum())})")
+
+print(f"\n--- Deviation statistics (m > {PCT_STABLE_MOLALITY} mol/kg) ---")
+_dev_line('ALT model (held-out)      ', dev_alt, stable)
+_dev_line('MC12 baseline             ', dev_mc12, stable)
+_dev_line('Production (IN-SAMPLE ref)', dev_prod, stable)
+print("--- Same, restricted to MC12 validity range ---")
+_dev_line('ALT model (held-out)      ', dev_alt, stable & in_rng_u)
+_dev_line('MC12 baseline             ', dev_mc12, stable & in_rng_u)
+
+print("\n--- Per-source mean abs deviation (ALT | MC12) ---")
+for src in sorted(set(Su)):
+    m_src = (Su == src) & stable
+    if m_src.any():
+        print(f"  {src:16s}: {np.mean(np.abs(dev_alt[m_src])):6.2f}% | "
+              f"{np.mean(np.abs(dev_mc12[m_src])):6.2f}%  (n={int(m_src.sum())})")
+
+alt_print_fit_quality('ALT model: Na2SO4 reconstructed vs empirical', Zu, kappa_alt[u])
+alt_print_fit_quality('MC12 baseline: Na2SO4 vs empirical', Zu, kappa_mc12[u])
+alt_diagnose_error_structure('ALT model', Tu_K, Mu, dev_alt)
+alt_diagnose_error_structure('MC12 baseline', Tu_K, Mu, dev_mc12)
+
+# ==========================================================
+# 5. DIAGNOSTIC FIGURES
+# ==========================================================
+unique_sources = sorted(set(Su))
+markers = ['o', 's', '^', 'D', 'v', 'P']
+ALT_COLOR, MC12_COLOR, PROD_COLOR = 'tab:green', 'tab:red', 'tab:blue'
+
+# --- deviation vs molality ---
+fig, ax = plt.subplots(figsize=(6.5, 4.2))
+ax.axhspan(-10, 10, color='0.85', alpha=0.6, zorder=0, label=r'$\pm$10%')
+for i, src in enumerate(unique_sources):
+    mask = Su == src
+    mk = markers[i % len(markers)]
+    ax.scatter(Mu[mask], dev_alt[mask], s=30, marker=mk, color=ALT_COLOR,
+               zorder=3, label='ALT (held-out)' if i == 0 else None)
+    ax.scatter(Mu[mask], dev_mc12[mask], s=30, marker=mk, facecolors='none',
+               edgecolors=MC12_COLOR, zorder=3,
+               label='MC12' if i == 0 else None)
+    ax.scatter(Mu[mask], dev_prod[mask], s=18, marker=mk, color=PROD_COLOR,
+               alpha=0.45, zorder=2,
+               label='production (in-sample)' if i == 0 else None)
+ax.axhline(0, color='black', lw=0.8)
+ax.set_xscale('log')
+ax.set_xlabel(r'Na$_2$SO$_4$ molality (mol kg$^{-1}$)')
+ax.set_ylabel('Signed deviation (%)')
+ax.set_title(r'Na$_2$SO$_4$ held-out (ALT chain): deviation vs molality')
+ax.legend()
+save_fig(fig, 'na2so4_alt_deviation_vs_molality')
+plt.show()
+
+# --- deviation vs temperature ---
+fig, ax = plt.subplots(figsize=(6.5, 4.2))
+ax.axhspan(-10, 10, color='0.85', alpha=0.6, zorder=0, label=r'$\pm$10%')
+ax.scatter(Tu_K, dev_alt, s=28, color=ALT_COLOR, zorder=3, label='ALT (held-out)')
+ax.scatter(Tu_K, dev_mc12, s=28, facecolors='none', edgecolors=MC12_COLOR,
+           zorder=3, label='MC12')
+ax.scatter(Tu_K, dev_prod, s=16, color=PROD_COLOR, alpha=0.45, zorder=2,
+           label='production (in-sample)')
+ax.axvline(MC12_T_VALID_C[1] + 273.15, color=MC12_COLOR, ls=':', lw=1,
+           label='MC12 validity edge (95 C)')
+ax.axhline(0, color='black', lw=0.8)
+ax.set_xlabel('Temperature (K)')
+ax.set_ylabel('Signed deviation (%)')
+ax.set_title(r'Na$_2$SO$_4$ held-out (ALT chain): deviation vs temperature')
+ax.legend()
+save_fig(fig, 'na2so4_alt_deviation_vs_temperature')
+plt.show()
+
+# --- parity ---
+fig, ax = plt.subplots(figsize=(5.4, 5.4))
+lims = [0, max(Zu.max(), np.nanmax(kappa_alt[u]), np.nanmax(kappa_mc12[u])) * 1.05]
+ax.plot(lims, lims, ls='--', color='gray', lw=1, label='1:1 line')
+ax.scatter(Zu, kappa_alt[u], s=28, color=ALT_COLOR, zorder=3, label='ALT (held-out)')
+ax.scatter(Zu, kappa_mc12[u], s=28, facecolors='none', edgecolors=MC12_COLOR,
+           zorder=3, label='MC12')
+s_a = alt_fit_quality_stats(Zu, kappa_alt[u])
+s_b = alt_fit_quality_stats(Zu, kappa_mc12[u])
+ax.text(0.05, 0.95,
+        f"ALT:  RMSE={s_a['rmse']:.3f}, $R^2$={s_a['r2_vs_1to1_line']:.4f}\n"
+        f"MC12: RMSE={s_b['rmse']:.3f}, $R^2$={s_b['r2_vs_1to1_line']:.4f}\n"
+        f"n = {s_a['n']}",
+        transform=ax.transAxes, va='top', fontsize=8,
+        bbox=dict(boxstyle='round', fc='white', ec='black', lw=0.6))
+ax.set_xlim(lims); ax.set_ylim(lims)
+ax.set_xlabel(r'Empirical conductivity (mS cm$^{-1}$)')
+ax.set_ylabel(r'Predicted conductivity (mS cm$^{-1}$)')
+ax.set_title(r'Na$_2$SO$_4$ (ALT chain): predicted vs empirical')
+ax.set_aspect('equal')
+ax.legend(loc='lower right', fontsize=8)
+save_fig(fig, 'na2so4_alt_parity')
+plt.show()
+
+# --- structure of the error in (T, m) space ---
+fig, ax = plt.subplots(figsize=(6.5, 4.5))
+vmax = max(np.max(np.abs(dev_alt)), 1.0)
+sc = ax.scatter(Tu_K, Mu, c=dev_alt, cmap='RdBu_r', vmin=-vmax, vmax=vmax,
+                s=60, edgecolors='black', linewidths=0.4)
+plt.colorbar(sc, ax=ax, label='Signed deviation (%)')
+ext_mask = n_extrap[u]
+if ext_mask.any():
+    ax.scatter(Tu_K[ext_mask], Mu[ext_mask], facecolors='none',
+               edgecolors='lime', s=110, linewidths=1.2,
+               label='cold-extrapolated ion lambda')
+    ax.legend(fontsize=8)
+ax.set_yscale('log')
+ax.set_xlabel('Temperature (K)')
+ax.set_ylabel(r'Na$_2$SO$_4$ molality (mol kg$^{-1}$)')
+ax.set_title(r'Na$_2$SO$_4$ (ALT chain): structure of the additivity error')
+save_fig(fig, 'na2so4_alt_deviation_map')
+plt.show()
+
+# --- deviation histogram ---
+fig, ax = plt.subplots(figsize=(5.8, 3.8))
+bins = np.linspace(min(dev_alt[stable].min(), dev_mc12[stable].min()),
+                   max(dev_alt[stable].max(), dev_mc12[stable].max()), 18)
+ax.hist(dev_alt[stable], bins=bins, color=ALT_COLOR, alpha=0.65,
+        edgecolor='black', linewidth=0.4, label='ALT (held-out)')
+ax.hist(dev_mc12[stable], bins=bins, color=MC12_COLOR, alpha=0.45,
+        edgecolor='black', linewidth=0.4, label='MC12')
+ax.axvline(0, color='black', lw=0.8)
+ax.set_xlabel('Signed deviation (%)')
+ax.set_ylabel('Count')
+ax.set_title(rf'Na$_2$SO$_4$ deviation distribution (m > {PCT_STABLE_MOLALITY})')
+ax.legend()
+save_fig(fig, 'na2so4_alt_deviation_histogram')
+plt.show()
+
+# ==========================================================
+# 6. SUMMARY
+# ==========================================================
+print("\n" + "=" * 60)
+print("SUMMARY (easy read)")
+print("=" * 60)
+mae_a = np.mean(np.abs(dev_alt[stable]))
+mae_b = np.mean(np.abs(dev_mc12[stable]))
+mae_p = np.mean(np.abs(dev_prod[stable]))
+print(f"1. Na2SO4 held out via the ALT chain (SO4 from K2SO4), m > "
+      f"{PCT_STABLE_MOLALITY} mol/kg:")
+print(f"     ALT (held-out):        MAE {mae_a:.2f}%, bias {np.mean(dev_alt[stable]):+.2f}%")
+print(f"     MC12 baseline:         MAE {mae_b:.2f}%, bias {np.mean(dev_mc12[stable]):+.2f}%")
+print(f"     production (IN-SAMPLE): MAE {mae_p:.2f}% (reference only; Na2SO4 "
+      f"was in its training set)")
+print(f"2. SO4 surface transfer (K2SO4-derived vs Na2SO4-derived, hull "
+      f"intersection): mean abs {np.nanmean(np.abs(pct_diff)):.2f}%, "
+      f"max abs {np.nanmax(np.abs(pct_diff)):.2f}%, signed mean "
+      f"{np.nanmean(pct_diff):+.2f}%; alphas {spline_so4_alt.alpha:.3f} (ALT) "
+      f"vs {spline_so4_seq.alpha:.3f} (production).")
+print(f"3. Circularity: Na2SO4 data never entered the ALT chain (genuine "
+      f"held-out test); both ALT and MC12 share the NaSO4- pair lambdas "
+      f"(pair share median {np.nanmedian(pf):.1%}), so the independent part "
+      f"of the comparison is the free-ion channel. The KSO4- lambdas used "
+      f"during the K2SO4 deconvolution are also MC12 Table 1.")
+print(f"4. Coverage: {int(usable.sum())}/{len(d)} points usable; "
+      f"{int(n_extrap[u].sum())} rely on cold-extrapolated ion lambdas.")
