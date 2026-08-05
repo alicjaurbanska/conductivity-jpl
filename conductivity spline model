@@ -1,57 +1,6 @@
 # ==========================================================
-# CONDUCTIVITY MODEL  (v7)
+# CONDUCTIVITY MODEL  (v8)
 # ==========================================================
-#
-# v7 CHANGES (per final audit decisions):
-#  1.  Walden ON by default with per-ion fitted fractional alpha; alpha_i is
-#      stored on each spline and used at every evaluation; alphas printed in
-#      the final summary.
-#  2.  Joint simultaneous fit RETAINED as a disabled alternative architecture
-#      (FIT_MODE='joint'); production is the sequential chain. Backward-compat
-#      alias block removed.
-#  3.  McCleskey ion-pair lambdas are an explicitly named SHARED submodel
-#      (pair_conduction_mc12) used in training AND prediction. Final.
-#  4.  KCl transport-number function documented as a QUADRATIC empirical fit
-#      (0-100 C); tangent (linear) extrapolation outside 0-100 C with printed
-#      notes.
-#  5.  Cold-side known-ion extrapolation kept; rows tagged
-#      From_Extrapolated_Known, per-ion counts printed, manual ablation hook
-#      refit_ion_excluding_extrapolated() provided.
-#  6.  Subtraction guards in subtract_ion_molar: subtraction fraction f and
-#      m_free_new reported; rows with f > SUBTRACTION_FRACTION_MAX or
-#      m_free_new < MIN_FREE_MOLALITY_MOLKG excluded with printed reasons;
-#      per-salt f distribution printed.
-#  7.  Grouped cross-validation for smoothing selection: folds grouped by
-#      (Source, isotherm); no group straddles train/validation.
-#  8.  Explicit ambient criterion: ALL McCleskey2011 rows ambient by
-#      definition (hot rows = saturated-liquid states); other sources ambient
-#      iff |P - 0.1| <= AMBIENT_P_TOL_MPA; resolved state pressure column
-#      P_state_MPa (Psat above 372 K) recorded; viscosity evaluated at the
-#      resolved state (the reference eta table's saturated-liquid branch).
-#  9.  Pressure-mode training branches removed (3D speciation interpolators,
-#      Na+ cold-gate pressure branch). Pressure lives ONLY in the
-#      prediction-side viscosity channel and in staged evaluation datasets.
-# 10.  Replicate policy unchanged: within-source replicates averaged, unit
-#      weights; different labs stay separate. Final.
-# 11.  Outlier filter: residual-based (provisional fit -> relative residual
-#      threshold -> single refit), replacing the global 8-MAD filter. Every
-#      exclusion printed; boundary points flagged.
-# 12.  Non-positive derived lambdas dropped WITH cause analysis (T, I,
-#      Source, f, m_free_new, clustering check).
-# 13.  Mixture-capable primary prediction interface predict_conductivity()
-#      taking a speciated-composition dict; predict_from_speciation is now a
-#      thin salt-keyed adapter.
-# 14.  Salt-closure diagnostic for every training salt with deviation plots;
-#      gate raises if any closure rel. RMSE > SALT_CLOSURE_RMSE_MAX.
-# 15.  Determinism: canonical (Source, temp, I) sort before every fit;
-#      speciation merge RAISES listing missing (Salt, T, m, P) keys.
-# 16.  Supercooled viscosity limitation: IAPWS table retained (floor
-#      250.15 K); the supercooled branch is an extrapolation of IAPWS-95 /
-#      IAPWS-2008 below their certified range and is a documented limitation.
-#
-# Retained: FLAGGED/derived/mixture/unit/contamination guards; replicate
-# policy; CV-smoothed scattered splines; relative-only Adams & Hall staging;
-# unified speciation-conditions export; saturated-liquid viscosity branch.
 
 import os
 import warnings
@@ -62,7 +11,7 @@ from scipy.interpolate import (SmoothBivariateSpline, RectBivariateSpline,
                                LinearNDInterpolator, UnivariateSpline, BSpline)
 from scipy.spatial import Delaunay
 
-FIG_DIR = 'Figures'
+FIG_DIR = globals().get('FIG_DIR_OVERRIDE', 'Figures')
 os.makedirs(FIG_DIR, exist_ok=True)
 
 # ---- MASTER SWITCHES -------------------------------------------------
@@ -85,10 +34,10 @@ USE_LARIONOV  = True
 USE_PAN2021   = INCLUDE_PAN
 USE_PAN2020   = INCLUDE_PAN
 EXCLUDE_DERIVED = False #training on all data now
-EXCLUDE_FLAGGED = False 
+EXCLUDE_FLAGGED = False
 
 # ---- FILES / DATA ORIGIN ---------------------------------------------
-SPECIATION_DB = 'supcrt'      # 'supcrt' or 'wateq4f'
+SPECIATION_DB = globals().get('SPECIATION_DB_OVERRIDE', 'supcrt')
 SPECIATION_FILE = f'speciation_{SPECIATION_DB}.csv'
 LIBRARY_FILE = 'empirical_conductivity_library.csv'
 DATA_FROM_GITHUB = True
@@ -179,6 +128,8 @@ plt.rcParams.update({
     'font.size': 11, 'axes.labelsize': 11, 'axes.titlesize': 11,
     'legend.fontsize': 9, 'figure.dpi': 100, 'savefig.bbox': 'tight',
 })
+if globals().get('QUIET_PLOTS', False):
+    plt.show = lambda *a, **k: plt.close('all')
 
 def save_fig(fig, name):
     pdf_path = os.path.join(FIG_DIR, f'{name}.pdf')
@@ -641,18 +592,18 @@ class SpeciationLookup:
     Each salt is served by a single 2D (T, m) interpolation on the table's
     first pressure plane - or, for DEGENERATE grids (change v7.1), a 1D
     interpolation along the single varying axis."""
- 
+
     def __init__(self, spec_df):
         self.interp2d = {}
         self.P_plane = {}
         self._warned = set()
         all_cols = list(ION_FREE_COL.values()) + PAIR_COLS + ['I_eff']
         m_tol = 10.0 ** (-MERGE_DECIMALS)
- 
+
         def _f_2d(pts, vals):
             f = LinearNDInterpolator(pts, vals)
             return lambda Tq, mq: f(np.atleast_1d(Tq), np.atleast_1d(mq))
- 
+
         def _f_1d_T(T_pts, vals, m0):
             order = np.argsort(T_pts)
             Ts, vs = T_pts[order], vals[order]
@@ -663,7 +614,7 @@ class SpeciationLookup:
                 on_level = np.abs(mq - m0) <= max(m_tol, 1e-9 * abs(m0))
                 return np.where(on_level, out, np.nan)
             return f
- 
+
         def _f_1d_m(m_pts, vals, T0):
             order = np.argsort(m_pts)
             ms, vs = m_pts[order], vals[order]
@@ -674,7 +625,7 @@ class SpeciationLookup:
                 on_level = np.abs(Tq - T0) <= 1e-6
                 return np.where(on_level, out, np.nan)
             return f
- 
+
         def _f_0d(v0, T0, m0):
             def f(Tq, mq):
                 Tq = np.atleast_1d(np.asarray(Tq, dtype=float))
@@ -683,7 +634,7 @@ class SpeciationLookup:
                       (np.abs(mq - m0) <= max(m_tol, 1e-9 * abs(m0)))
                 return np.where(hit, v0, np.nan)
             return f
- 
+
         for salt, d in spec_df.groupby('Salt'):
             P_lv = np.sort(d['Pressure_MPa'].round(MERGE_DECIMALS).unique())
             self.P_plane[salt] = float(P_lv[0])
@@ -722,7 +673,7 @@ class SpeciationLookup:
                       f"only (change v7.1).")
                 self.interp2d[salt] = {c: _f_0d(float(d0[c].values[0]), T0, m0)
                                        for c in cols_present}
- 
+
     def get(self, salt, T_K, molality, col, P_MPa=None):
         T_K = np.atleast_1d(np.asarray(T_K, dtype=float))
         molality = np.atleast_1d(np.asarray(molality, dtype=float))
@@ -737,8 +688,8 @@ class SpeciationLookup:
                       f"the P={self.P_plane[salt]} MPa plane is used for speciation "
                       f"(pressure enters predictions only via viscosity).")
         return f2(T_K, molality)
- 
- 
+
+
 
 # ==========================================
 # 0.6 ION CONDUCTIVITY MODEL
@@ -1104,6 +1055,12 @@ print(f"\nspeciation_conditions_required.csv written: {len(_required)} unique "
 
 # change 15: HARD merge assertion - zero library rows may lack speciation.
 _missing = df['I_eff'].isna()
+if _missing.any() and globals().get('DROP_UNSPECIATED', False):
+    print(f"DROP_UNSPECIATED: dropping {int(_missing.sum())} library row(s) "
+          f"with no speciation in {SPECIATION_FILE}:")
+    print(df[_missing].groupby(['Source', 'Salt']).size().to_string())
+    df = df[~_missing].copy()
+    _missing = df['I_eff'].isna()
 if _missing.any():
     _miss_keys = (df.loc[_missing, ['Salt', 'Temperature_C', 'Molality_molkg',
                                     'Pressure_MPa']]
