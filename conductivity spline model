@@ -1,5 +1,5 @@
 # ==========================================================
-# CONDUCTIVITY MODEL  (v8)
+# CONDUCTIVITY MODEL  (v9)
 # ==========================================================
 
 import os
@@ -64,6 +64,55 @@ PREDICT_MIN_SPECIES_MOLALITY = 1e-8  # change 13: species below this are ignored
 SALT_CLOSURE_RMSE_MAX = 0.20      # change 14: per-salt closure gate
 ISOTHERM_ROUND_K = 1.0            # change 7: isotherm = T rounded to this step
 
+# ---- INFINITE-DILUTION ANCHORS (change 17): lambda_0 rows at I = 0 ----
+ANCHOR_LAMBDA0 = True
+ANCHOR_SOURCE = 'anchor_lambda0'   # own Source label -> own CV groups,
+                                   # visible in every diagnostic
+ANCHOR_N_T = 15                    # anchor temperatures per ion
+ANCHOR_T_WINDOW_K = (273.15, 368.15)  # 0-95 C validity of the MC12 lam0 fits
+
+# lam0(T_C) = a*T_C^2 + b*T_C + c, McCleskey et al. (2012) Table 1,
+# units mS kg cm^-1 mol^-1, valid 0-95 C. NOTE: same Table 1 as the pair
+# submodel, so ONE shared-dependency limitation with the MC12 comparison
+# baseline covers both (see pair_conduction_mc12 provenance statement).
+LAMBDA0_MC12 = {
+    'K':   (0.003046, 1.261,  40.70),
+    'Na':  (0.003763, 0.8770, 26.23),
+    'NH4': (0.003341, 1.285,  39.04),
+    'Ca':  (0.009645, 1.984,  62.28),
+    'Mg':  (0.01068,  1.695,  57.16),
+    'SO4': (0.01037,  2.838,  82.37),
+    'Cl':  (0.003817, 1.337,  40.99),
+}
+
+def lambda0_ion(ion, T_K):
+    """Limiting single-ion molal conductivity lambda_0(T) from the
+    McCleskey (2012) Table 1 quadratics (change 17)."""
+    a, b, c = LAMBDA0_MC12[ion]
+    T_C = np.asarray(T_K, dtype=float) - 273.15
+    return a * T_C**2 + b * T_C + c
+
+def make_anchor_rows(ion, T_lo_K, T_hi_K):
+    """Synthetic training rows at I = 0 with Lambda = lambda_0(T)
+    (change 17). Exact by definition of the infinite-dilution limit;
+    Walden-transformed like every measured point inside IonSpline (the
+    spline fits W = lambda * eta^alpha, so the anchored I = 0 edge is
+    nearly flat in T and extrapolates well below the training floor).
+    Clipped to the 0-95 C validity window of the Table 1 quadratics;
+    an ion whose data lie entirely outside that window gets no anchors."""
+    lo = max(float(T_lo_K), ANCHOR_T_WINDOW_K[0])
+    hi = min(float(T_hi_K), ANCHOR_T_WINDOW_K[1])
+    if hi <= lo:
+        return None
+    T = np.linspace(lo, hi, ANCHOR_N_T)
+    return pd.DataFrame({
+        'Source': ANCHOR_SOURCE, 'temp_K': T, 'I': 0.0, 'Molality': 0.0,
+        'Lambda': lambda0_ion(ion, T),
+        'Pressure_MPa': REFERENCE_PRESSURE_MPA,
+        'P_state_MPa': REFERENCE_PRESSURE_MPA,
+        'Ambient': True, 'From_Extrapolated_Known': False,
+    })
+
 # ---- CV SMOOTHING (sequential chain) ---------------------------------
 CV_FOLDS = 5
 CV_SEED = 0
@@ -110,7 +159,9 @@ def pair_conduction_mc12(source_df_or_cols, T_K, I, pair_cols):
     (b) Because the same coefficients also live inside the McCleskey baseline
         used for model comparison, the empirical model PARTLY SHARES A
         SUBMODEL with that baseline. This shared dependency is accepted and
-        documented as a limitation of the comparison.
+        documented as a limitation of the comparison. (change 17 note: the
+        lambda_0 anchor functions in LAMBDA0_MC12 come from the same table,
+        so the same limitation statement covers them.)
     (c) The coefficients were originally regressed with WATEQ4F speciation;
         this model feeds them SUPCRT free-ion / pair molalities, so the
         pairing convention is not identical to the original regression.
@@ -544,7 +595,12 @@ class IonSpline:
         return np.where(self._in_hull(t_query, I_query), val, np.nan)
     def validate_physics(self):
         t_vals = np.linspace(self.t_range[0], self.t_range[1], 50)
-        I_lo = max(1e-6, self.I_range[0])
+        # change 17: with the I = 0 anchors the hull reaches I = 0, where
+        # d(lambda)/dI diverges as 1/sqrt(I) BY CONSTRUCTION (Kohlrausch
+        # limiting law: dLambda/dI is infinite at I = 0 while the slope in
+        # sqrt(I) stays finite). Floor the diagnostic grid at 1e-3 so real
+        # violations are not drowned out by limiting-law divergence.
+        I_lo = max(1e-3, self.I_range[0])
         I_vals = np.geomspace(I_lo, self.I_range[1], 50)
         Tg, Ig = np.meshgrid(t_vals, I_vals)
         Tg_flat, Ig_flat = Tg.ravel(), Ig.ravel()
@@ -914,19 +970,6 @@ if EXCLUDE_FLAGGED and _flagged.any():
 elif _flagged.any():
     print(f"FLAGGED rows KEPT ({int(_flagged.sum())}) - guard disabled:")
     print(df_raw[_flagged].groupby(['Source', 'Salt']).size().to_string())
-_flagged = df_raw['Notes'].astype(str).str.contains('FLAGGED', case=False, na=False)
-if EXCLUDE_FLAGGED and _flagged.any():
-    print(f"FLAGGED-row guard: dropping {_flagged.sum()} row(s) -> "
-          f"{df_raw.loc[_flagged, ['Salt', 'Source', 'Temperature_C', 'Molality_molkg']].to_dict('records')}")
-    df_raw = df_raw[~_flagged].copy()
-elif _flagged.any():
-    print(f"FLAGGED rows KEPT ({int(_flagged.sum())}) - guard disabled:")
-    print(df_raw[_flagged].groupby(['Source', 'Salt']).size().to_string())
-_flagged = df_raw['Notes'].astype(str).str.contains('FLAGGED', case=False, na=False)
-if _flagged.any():
-    print(f"FLAGGED-row guard: dropping {_flagged.sum()} row(s) -> "
-          f"{df_raw.loc[_flagged, ['Salt', 'Source', 'Temperature_C', 'Molality_molkg']].to_dict('records')}")
-    df_raw = df_raw[~_flagged].copy()
 if EXCLUDE_DERIVED and 'Source_Type' in df_raw.columns:
     _derived = df_raw['Source_Type'].astype(str).str.lower().eq('derived')
     if _derived.any():
@@ -1156,6 +1199,10 @@ print(f"Switches: SQRT_I={SQRT_I}  WALDEN={WALDEN}  WALDEN_ALPHA_FIT={WALDEN_ALP
 print(f"Ambient policy: McCleskey2011 rows ambient by definition; others "
       f"|P-{REFERENCE_PRESSURE_MPA}| <= {AMBIENT_P_TOL_MPA} MPa; Psat switch at "
       f"{PSAT_SWITCH_T_K:.0f} K.")
+print(f"Anchors (change 17): ANCHOR_LAMBDA0={ANCHOR_LAMBDA0}, "
+      f"{ANCHOR_N_T} lambda_0 rows/ion at I=0, window "
+      f"{ANCHOR_T_WINDOW_K[0]:.2f}-{ANCHOR_T_WINDOW_K[1]:.2f} K, "
+      f"Source='{ANCHOR_SOURCE}'.")
 for salt in ALL_SALTS:
     d_salt = df[df['Salt'] == salt]
     if d_salt.empty:
@@ -1249,14 +1296,32 @@ def calculate_t_kcl(temp_C, molality):
 # 3. HELPERS (sequential chain)
 # ==========================================
 def fit_lambda_spline(d, label, t_col='temp_K', I_col='I', lambda_col='Lambda',
-                      P_col=None, s=None):
+                      P_col=None, s=None, anchor_ion=None):
     """Replicate policy (change 10, FINAL): rows sharing (Source, T, I[, P])
     are averaged into ONE unit-weight point; different labs stay separate
     points. No other weighting scheme.
     Determinism (change 15): canonical (Source, temp, I) sort before fitting.
     CV grouping (change 7): (Source, isotherm) with isotherm = T rounded to
-    ISOTHERM_ROUND_K."""
+    ISOTHERM_ROUND_K.
+    Anchors (change 17): if anchor_ion names an ion in LAMBDA0_MC12,
+    lambda_0 rows at I = 0 are appended before fitting. Skipped when the
+    frame already carries ANCHOR_SOURCE rows, so the residual-filter refit
+    and the ablation hook never double-add anchors. Anchor rows assume the
+    default column names (temp_K, I, Lambda)."""
     d = d.copy()
+    if ANCHOR_LAMBDA0 and anchor_ion in LAMBDA0_MC12 and \
+            not (d['Source'] == ANCHOR_SOURCE).any():
+        anc = make_anchor_rows(anchor_ion, d[t_col].min(), d[t_col].max())
+        if anc is not None:
+            anc = anc.reindex(columns=d.columns)  # align; absent cols -> NaN
+            d = pd.concat([d, anc], ignore_index=True)
+            print(f"  {label}: appended {len(anc)} lambda_0 anchor rows at I=0 "
+                  f"(Source='{ANCHOR_SOURCE}', T "
+                  f"{anc['temp_K'].min():.1f}-{anc['temp_K'].max():.1f} K).")
+        else:
+            print(f"  {label}: no lambda_0 anchors - data T range lies outside "
+                  f"the {ANCHOR_T_WINDOW_K[0]:.1f}-{ANCHOR_T_WINDOW_K[1]:.1f} K "
+                  f"validity window.")
     d = d.sort_values(['Source', t_col, I_col] if 'Source' in d.columns
                       else [t_col, I_col], kind='mergesort').reset_index(drop=True)
     if 'Ambient' in d.columns and not bool(np.all(d['Ambient'].values)):
@@ -1314,10 +1379,19 @@ def _residual_outlier_refit(spline, t_range, I_range, dfit, label):
     filter. Uses the provisional spline's RELATIVE residuals; points above
     OUTLIER_REL_RESID_MAX are excluded WITH a printed report, then the
     surface is refit ONCE. Boundary points are flagged, never silently
-    deleted."""
+    deleted. Change 17: lambda_0 anchor rows are exact by definition and
+    are NEVER outlier-filtered; a note is printed if they exceed the
+    threshold (that indicates a low-I misfit, not bad anchors)."""
     fitted = np.atleast_1d(spline.ev(dfit['temp_K'].values, dfit['I'].values))
     rel = (dfit['Lambda'].values - fitted) / dfit['Lambda'].values
     bad = np.abs(rel) > OUTLIER_REL_RESID_MAX
+    is_anchor = dfit['Source'].values == ANCHOR_SOURCE
+    n_anchor_flagged = int((bad & is_anchor).sum())
+    if n_anchor_flagged:
+        print(f"  {label}: NOTE - {n_anchor_flagged} lambda_0 anchor row(s) "
+              f"exceed the residual threshold but are EXEMPT from exclusion "
+              f"(change 17); inspect the low-I fit if this persists.")
+    bad &= ~is_anchor
     if not bad.any():
         print(f"  {label}: residual outlier filter (|rel resid| > "
               f"{OUTLIER_REL_RESID_MAX:.0%}): no exclusions.")
@@ -1350,7 +1424,9 @@ def subtract_ion_molar(source_df, salt_name, known_ion, model,
                 molality guard (exclude m_free_new < MIN_FREE_MOLALITY_MOLKG),
                 with per-salt f distribution;
       change 11: residual-based outlier filter;
-      change 12: cause analysis for non-positive derived lambdas."""
+      change 12: cause analysis for non-positive derived lambdas;
+      change 17: the derived-ion surface is fitted WITH lambda_0 anchor rows
+                (anchor_ion=new_ion passed to fit_lambda_spline)."""
     stoich = model.stoich_for(salt_name)
     if known_ion not in stoich:
         raise ValueError(f"{salt_name} stoichiometry {stoich} has no ion '{known_ion}'.")
@@ -1466,7 +1542,8 @@ def subtract_ion_molar(source_df, salt_name, known_ion, model,
                            'P_state_MPa': P_state[final_idx],
                            'Ambient': True,
                            'From_Extrapolated_Known': fx[final_idx]})
-    spline, t_range, I_range, dfit = fit_lambda_spline(ion_df, new_ion_label)
+    spline, t_range, I_range, dfit = fit_lambda_spline(ion_df, new_ion_label,
+                                                       anchor_ion=new_ion)
     spline, t_range, I_range, dfit = _residual_outlier_refit(
         spline, t_range, I_range, dfit, new_ion_label)
     n_tag = int(dfit['From_Extrapolated_Known'].sum())
@@ -1503,9 +1580,9 @@ print("SEQUENTIAL chain (PRODUCTION fit)")
 print("=" * 70)
 model = IonConductivityModel(speciation=spec_lookup)
 spline_k, k_t_range, k_I_range, df_k_ion = fit_lambda_spline(
-    df_k_ion, 'K+ (from KCl)')
+    df_k_ion, 'K+ (from KCl)', anchor_ion='K')
 spline_cl, cl_t_range, cl_I_range, df_cl_ion = fit_lambda_spline(
-    df_cl_ion, 'Cl- (from KCl)')
+    df_cl_ion, 'Cl- (from KCl)', anchor_ion='Cl')
 model.add_ion('K', spline_k)
 model.add_ion('Cl', spline_cl)
 
@@ -1521,8 +1598,9 @@ spline_na, na_t_range, na_I_range, df_na_ion = subtract_ion_molar(
     salt_dfs['NaCl'].copy(), 'NaCl', known_ion='Cl', model=model,
     new_ion_pretty_label='Na+ (unified)',
     known_ion_extrap_mode='linear')
-_fit_check = spline_na.ev(df_na_ion['temp_K'].values, df_na_ion['I'].values)
-_rel = np.sqrt(np.mean((df_na_ion['Lambda'].values - _fit_check) ** 2)) / df_na_ion['Lambda'].mean()
+_na_meas = df_na_ion[df_na_ion['Source'] != ANCHOR_SOURCE]
+_fit_check = spline_na.ev(_na_meas['temp_K'].values, _na_meas['I'].values)
+_rel = np.sqrt(np.mean((_na_meas['Lambda'].values - _fit_check) ** 2)) / _na_meas['Lambda'].mean()
 if _rel > 0.20:
     raise RuntimeError(f'Na+ sanity gate: training rel. RMSE {_rel:.2%} > 20%.')
 
@@ -1554,13 +1632,19 @@ for _ion, _dfi in SEQ_ION_DFS.items():
     _n = int(_dfi['From_Extrapolated_Known'].sum())
     print(f"  {_ion:4s}: {_n}/{len(_dfi)} fitted points tagged From_Extrapolated_Known.")
 
+print("\nLambda_0 anchor usage per ion surface (change 17):")
+for _ion, _dfi in SEQ_ION_DFS.items():
+    _n = int((_dfi['Source'] == ANCHOR_SOURCE).sum())
+    print(f"  {_ion:4s}: {_n}/{len(_dfi)} fitted points are I=0 lambda_0 anchors.")
+
 def refit_ion_excluding_extrapolated(ion_name):
     """ABLATION HOOK (change 5c) - call MANUALLY for comparison.
     Refits one ion surface EXCLUDING every row tagged
     From_Extrapolated_Known=True, so the effect of cold-side known-ion
     extrapolation on the fitted surface can be quantified against
     SEQ_SPLINES[ion_name]. Returns (spline, t_range, I_range, ion_df) or
-    None if the ion has no tagged rows."""
+    None if the ion has no tagged rows. (Anchor rows already sit in the
+    frame and are kept; the change 17 guard prevents double-adding.)"""
     dfi = SEQ_ION_DFS[ion_name]
     if 'From_Extrapolated_Known' not in dfi.columns or \
             not bool(dfi['From_Extrapolated_Known'].any()):
@@ -1571,6 +1655,22 @@ def refit_ion_excluding_extrapolated(ion_name):
     print(f"ABLATION: refitting {ion_name} on {len(d2)}/{len(dfi)} rows "
           f"(extrap-tagged rows excluded).")
     return fit_lambda_spline(d2, f'{ion_name} [ABLATION: no extrap-tagged rows]')
+
+def refit_ion_excluding_anchors(ion_name):
+    """ABLATION HOOK (change 17) - call MANUALLY for comparison.
+    Refits one ion surface WITHOUT the lambda_0 anchor rows, so the effect
+    of the infinite-dilution anchoring on the low-I edge can be quantified
+    against SEQ_SPLINES[ion_name]."""
+    dfi = SEQ_ION_DFS[ion_name]
+    msk = dfi['Source'] == ANCHOR_SOURCE
+    if not bool(msk.any()):
+        print(f"refit_ion_excluding_anchors('{ion_name}'): no anchor rows - "
+              f"nothing to ablate.")
+        return None
+    d2 = dfi[~msk].copy()
+    print(f"ABLATION: refitting {ion_name} on {len(d2)}/{len(dfi)} rows "
+          f"(lambda_0 anchors excluded).")
+    return fit_lambda_spline(d2, f'{ion_name} [ABLATION: no lambda_0 anchors]')
 
 # ==========================================
 # 7c. JOINT SIMULTANEOUS MULTI-SALT FIT
@@ -1583,7 +1683,8 @@ def refit_ion_excluding_extrapolated(ion_name):
 # (FIT_MODE='sequential'). It has been updated only as far as needed to
 # stay runnable under the v7 changes (Walden defaults via sequential
 # alphas, ambient criterion, shared MC12 pair submodel); it receives no
-# new features.
+# new features. (change 17 applies to the sequential path only; the
+# joint fit carries NO lambda_0 anchors.)
 # =====================================================================
 def run_joint_fit():
     print("\n" + "=" * 70)
@@ -1881,7 +1982,8 @@ salt_closure_diagnostic(model, FIT_SALTS)
 
 # ==========================================
 # 8. PUBLICATION FIGURE: ALL SEVEN IONIC SURFACES
-#    (dots = sequential-chain derived lambda points, for reference)
+#    (dots = sequential-chain derived lambda points, for reference;
+#     I=0 dots along the front edge are the lambda_0 anchors, change 17)
 # ==========================================
 ION_SPLINES = {
     'K$^+$':       (spline_k, k_t_range, k_I_range, df_k_ion),
