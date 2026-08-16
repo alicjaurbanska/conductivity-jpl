@@ -1,39 +1,117 @@
 # ==========================================
-# 10. PHASE 1 FLATNESS AUDIT (WALDEN only)
-#     Swept across ionic strength, not just the median slice: for each ion
-#     take many fixed-I T-slices spanning its data range, measure how flat
-#     the Walden product W(T) is on each, and report the MEDIAN and the
-#     90th-percentile (near-worst-case) flatness over those slices. A small
-#     ratio_p90 means the Walden rule holds over the WHOLE surface, not just
-#     at mid-I. nI = number of in-hull I-slices actually used.
-# ========================================== 
+# 10. WALDEN FLATNESS AUDIT v2
+#     Full library, SUPCRT speciation (whatever ION_SPLINES was fitted on).
+#     Per ion, fixed-I T-slices swept over the MEASURED I range (anchor
+#     rows at I=0 excluded from the sweep bounds so the low-I end is not
+#     trivially flat by construction). Columns:
+#       r_med, r_p90 : median / 90th pctile of r = S[W]/S[lambda] over slices
+#       r_loI, r_hiI : median r in lowest / highest tercile of I slices
+#       slope        : d(r)/d(log10 I), r change per decade of I
+#       I_breach     : smallest I with r > 0.10, '-' if never
+#       r_sub        : median r on the T < 273.15 K part of slices, '-' if none
+#       nI, nSub     : usable slices / slices with subzero coverage
+# ==========================================
+import re
+
+R_THRESH = 0.10
+
+def charge_from_label(label):
+    # parses LaTeX superscripts: 'K$^+$'->+1, 'SO$_4^{2-}$'->-2, 'Mg$^{2+}$'->+2
+    m = re.search(r'\^\{?(\d*)([+-])\}?', label)
+    if not m:
+        return 0
+    mag = int(m.group(1)) if m.group(1) else 1
+    return mag if m.group(2) == '+' else -mag
+
+audit = {}
+
 if WALDEN:
-    print("\nWalden flatness audit (swept across I; med & 90th-pctile over I-slices):")
-    print(f"{'ion':13s} {'alpha':>6s} {'Wspr_med':>9s} {'Wspr_p90':>9s} "
-          f"{'ratio_med':>10s} {'ratio_p90':>10s} {'nI':>4s}")
+    print("\nWalden flatness audit v2 (full dataset, SUPCRT speciation):")
+    print(f"{'ion':13s} {'z':>3s} {'alpha':>6s} {'r_med':>7s} {'r_p90':>7s} "
+          f"{'r_loI':>7s} {'r_hiI':>7s} {'slope':>7s} {'I_breach':>9s} "
+          f"{'r_sub':>7s} {'nI':>4s} {'nSub':>5s}")
+
     for name, (spl, tr, ir, ion_df) in ION_SPLINES.items():
-        T = np.linspace(tr[0], tr[1], 80)
-        I_lo = max(1e-6, float(np.min(ion_df['I'].values)))
-        I_hi = float(np.max(ion_df['I'].values))
+        z = charge_from_label(name)
+        T = np.linspace(tr[0], tr[1], 120)
+
+        # I sweep from MEASURED rows only (exclude I=0 lambda_0 anchors)
+        meas = ion_df[ion_df['Source'] != ANCHOR_SOURCE] \
+            if 'Source' in ion_df.columns else ion_df
+        I_pos = meas['I'].values[meas['I'].values > 0]
+        I_lo = max(1e-6, float(I_pos.min()))
+        I_hi = float(I_pos.max())
         I_levels = np.geomspace(I_lo, I_hi, 25) if I_hi > I_lo else np.array([I_lo])
-        sp_lam, sp_W = [], []
+
+        recs = []
         for I0 in I_levels:
             Icol = np.full_like(T, I0)
             lam = spl.ev_or_nan(T, Icol)
-            Wv = spl.W(T, Icol)
-            ok = np.isfinite(lam) & np.isfinite(Wv)
-            if ok.sum() < 10:                      # need a real in-hull T-slice
+            Wv  = spl.W(T, Icol)
+            ok = np.isfinite(lam) & np.isfinite(Wv) & (lam > 0) & (Wv > 0)
+            if ok.sum() < 10:
                 continue
-            lm, wm = np.mean(lam[ok]), np.mean(Wv[ok])
-            if lm <= 0 or wm <= 0:
+            S_lam = (lam[ok].max() - lam[ok].min()) / lam[ok].mean()
+            S_W   = (Wv[ok].max()  - Wv[ok].min())  / Wv[ok].mean()
+            if S_lam <= 0:
                 continue
-            sp_lam.append((lam[ok].max() - lam[ok].min()) / lm)
-            sp_W.append((Wv[ok].max() - Wv[ok].min()) / wm)
-        if not sp_W:
-            print(f"{name:13s} {spl.alpha:6.3f}   (no in-hull I-slice with >=10 T points)")
+            r = S_W / S_lam
+
+            r_sub = np.nan
+            sub = ok & (T < 273.15)
+            if sub.sum() >= 8:
+                S_lam_s = (lam[sub].max() - lam[sub].min()) / lam[sub].mean()
+                S_W_s   = (Wv[sub].max()  - Wv[sub].min())  / Wv[sub].mean()
+                if S_lam_s > 0:
+                    r_sub = S_W_s / S_lam_s
+            recs.append((I0, r, r_sub))
+
+        if not recs:
+            print(f"{name:13s} {z:+3d} {spl.alpha:6.3f}   (no usable in-hull I-slice)")
             continue
-        sp_lam, sp_W = np.array(sp_lam), np.array(sp_W)
-        ratio = sp_W / sp_lam
-        print(f"{name:13s} {spl.alpha:6.3f} "
-              f"{np.median(sp_W):9.3f} {np.percentile(sp_W, 90):9.3f} "
-              f"{np.median(ratio):10.3f} {np.percentile(ratio, 90):10.3f} {len(sp_W):4d}")
+
+        I_arr  = np.array([x[0] for x in recs])
+        r_arr  = np.array([x[1] for x in recs])
+        rs_arr = np.array([x[2] for x in recs])
+
+        n3 = max(1, len(r_arr) // 3)
+        r_lo, r_hi = np.median(r_arr[:n3]), np.median(r_arr[-n3:])
+        slope = (np.polyfit(np.log10(I_arr), r_arr, 1)[0]
+                 if len(I_arr) > 2 and I_arr.max() > I_arr.min() else np.nan)
+        breach = I_arr[r_arr > R_THRESH]
+        I_breach = f"{breach.min():.3g}" if breach.size else "-"
+        sub_ok = np.isfinite(rs_arr)
+        r_sub_med = f"{np.median(rs_arr[sub_ok]):.3f}" if sub_ok.any() else "-"
+
+        audit[name] = dict(z=z, alpha=spl.alpha, I=I_arr, r=r_arr, r_sub=rs_arr,
+                           T_lo_C=tr[0] - 273.15)
+
+        print(f"{name:13s} {z:+3d} {spl.alpha:6.3f} "
+              f"{np.median(r_arr):7.3f} {np.percentile(r_arr, 90):7.3f} "
+              f"{r_lo:7.3f} {r_hi:7.3f} {slope:7.3f} {I_breach:>9s} "
+              f"{r_sub_med:>7s} {len(r_arr):4d} {int(sub_ok.sum()):5d}")
+
+    print("\nHull temperature floors (C):",
+          {n: f"{d['T_lo_C']:.1f}" for n, d in audit.items()})
+
+    print("\nBy charge magnitude (pooled over ions and slices):")
+    for zmag in sorted({abs(d['z']) for d in audit.values()}):
+        pooled = np.concatenate([d['r'] for d in audit.values() if abs(d['z']) == zmag])
+        print(f"  |z| = {zmag}: r_med = {np.median(pooled):.3f}, "
+              f"r_p90 = {np.percentile(pooled, 90):.3f}, n_slices = {len(pooled)}")
+
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    cmap = {1: 'tab:blue', 2: 'tab:red'}
+    for name, d in audit.items():
+        ax.plot(d['I'], d['r'], marker='o', ms=3, lw=1,
+                color=cmap.get(abs(d['z']), 'gray'),
+                label=f"{name} (|z|={abs(d['z'])})")
+    ax.axhline(R_THRESH, color='k', ls='--', lw=0.8)
+    ax.set_xscale('log')
+    ax.set_xlabel(r'$I_{\mathrm{eff}}$ (mol kg$^{-1}$)')
+    ax.set_ylabel(r'$r = S[W]\,/\,S[\lambda]$')
+    ax.set_title('Walden flatness ratio vs ionic strength')
+    ax.legend(fontsize=7, ncol=2)
+    fig.tight_layout()
+    save_fig(fig, 'walden_flatness_vs_I')
+    plt.show()
