@@ -1,5 +1,25 @@
 # ==========================================================
-# CONDUCTIVITY MODEL  (v9)
+# CONDUCTIVITY MODEL  (v10)
+#   change 17: infinite-dilution lambda_0 anchor rows at I = 0
+#     (McCleskey et al. 2012 Table 1 quadratics, 0-95 C), injected per ion
+#     in fit_lambda_spline; anchors exempt from the residual outlier
+#     filter; validate_physics low-I diagnostic floor raised to 1e-3
+#     because d(lambda)/dI diverges as 1/sqrt(I) at the anchored edge
+#     (limiting-law behaviour, not a fit defect).
+#   change 19: I_COORD switch ('I_eff' | 'I_formal'). Selects which ionic
+#     strength column is the spline coordinate I, for BOTH training and
+#     prediction. 'I_eff' (speciated) is the PRODUCTION default; 'I_formal'
+#     (stoichiometric, full-dissociation) is an ABLATION variant that
+#     removes the speciation dependence from the COORDINATE channel only.
+#     Free-ion molalities and the pair terms stay speciated in both
+#     variants, so the free-ion MULTIPLIER channel is untouched; comparing
+#     the two variants isolates how much of the speciation error enters
+#     through the coordinate. NOTE: in the 'I_formal' variant the shared
+#     MC12 pair submodel and the lambda_0-anchored surfaces receive formal
+#     I, which deviates from the coefficients' original speciated-I
+#     convention - accepted for the ablation. Set via
+#     I_COORD_OVERRIDE before running this cell. Figure axis labels still
+#     read I_eff (cosmetic only).
 # ==========================================================
 
 import os
@@ -24,6 +44,14 @@ FIT_MODE = 'sequential'      # PRODUCTION. 'joint' retained as a disabled
 JOINT_INCLUDE_ALL = True
 # True  -> joint fit also trains on K2SO4/MgSO4/CaSO4 (in-sample tests).
 # False -> validation configuration (non-circular additivity tests).
+
+# ---- IONIC STRENGTH COORDINATE (change 19) ---------------------------
+I_COORD = globals().get('I_COORD_OVERRIDE', 'I_eff')
+# 'I_eff'    -> speciated ionic strength (PRODUCTION)
+# 'I_formal' -> stoichiometric ionic strength (ABLATION: coordinate channel
+#               de-speciated; free-ion multipliers remain speciated)
+if I_COORD not in ('I_eff', 'I_formal'):
+    raise ValueError(f"I_COORD must be 'I_eff' or 'I_formal', got '{I_COORD}'.")
 
 # ---- SOURCE SWITCHES -------------------------------------------------
 USE_CORTES    = True
@@ -165,6 +193,8 @@ def pair_conduction_mc12(source_df_or_cols, T_K, I, pair_cols):
     (c) The coefficients were originally regressed with WATEQ4F speciation;
         this model feeds them SUPCRT free-ion / pair molalities, so the
         pairing convention is not identical to the original regression.
+        (change 19 note: in the I_formal variant they also receive formal
+        rather than speciated I - a further, documented convention shift.)
     (d) The pair lambdas are NOT Walden-transformed: they carry no pressure
         response (ambient-only expressions in T and sqrt(I)).
     Returns the pair contribution to kappa (mS/cm)."""
@@ -190,15 +220,20 @@ def save_fig(fig, name):
     print(f"  saved {pdf_path} and {png_path}")
 
 def plot_ion_spline(spline, t_range, I_range, ion_df, title, ax, n_points=60):
-    Tg, Ig = np.meshgrid(np.linspace(t_range[0], t_range[1], n_points),
-                         np.linspace(I_range[0], I_range[1], n_points))
-    Z = spline.ev_or_nan(Tg.ravel(), Ig.ravel()).reshape(Tg.shape)
-    surf = ax.plot_surface(Tg, Ig, Z, cmap='viridis', linewidth=0, antialiased=True, alpha=0.9)
-    ax.scatter(ion_df['temp_K'], ion_df['I'], ion_df['Lambda'],
+    # change 18: plot in the FIT space (T, sqrt I_eff), matching the spline
+    # axis, so the near-linear Kohlrausch edge shows as near-linear instead
+    # of a steep hook against plain I.
+    x_lo, x_hi = np.sqrt(I_range[0]), np.sqrt(I_range[1])
+    Tg, Xg = np.meshgrid(np.linspace(t_range[0], t_range[1], n_points),
+                         np.linspace(x_lo, x_hi, n_points))
+    Z = spline.ev_or_nan(Tg.ravel(), Xg.ravel() ** 2).reshape(Tg.shape)
+    surf = ax.plot_surface(Tg, Xg, Z, cmap='viridis', linewidth=0,
+                           antialiased=True, alpha=0.9)
+    ax.scatter(ion_df['temp_K'], np.sqrt(ion_df['I']), ion_df['Lambda'],
                color='black', s=6, depthshade=False)
     ax.set_title(title, pad=0)
     ax.set_xlabel('T (K)', labelpad=2)
-    ax.set_ylabel('I$_{eff}$ (mol kg$^{-1}$)', labelpad=2)
+    ax.set_ylabel(r'$\sqrt{I_{\mathrm{eff}}}$ ((mol kg$^{-1}$)$^{1/2}$)', labelpad=2)
     ax.set_zlabel(r'$\lambda_i$ (mS cm$^{-1}$ (mol kg$^{-1}$)$^{-1}$)', labelpad=2)
     ax.tick_params(pad=0, labelsize=8)
     return surf
@@ -423,7 +458,10 @@ class IonSpline:
     with a PER-ION fitted fractional exponent alpha_i (WALDEN_ALPHA_FIT),
     stored on self.alpha at training time and used by EVERY evaluator
     (ev, ev_or_nan, ev_extrap, dT, dI_val, d2I_val):
-        lambda_i(T, P, I) = W_i(T, sqrt I) / eta_water(T, P)^alpha_i."""
+        lambda_i(T, P, I) = W_i(T, sqrt I) / eta_water(T, P)^alpha_i.
+
+    change 19: 'I' here means the model's chosen coordinate (I_COORD):
+    speciated I_eff in production, formal I in the ablation variant."""
     def __init__(self, t, I, lambda_val, label, s=None, w=None, kx=3, ky=3,
                  P_ref_MPa=REFERENCE_PRESSURE_MPA, P_MPa=None, groups=None):
         self.label = label
@@ -647,13 +685,15 @@ class SpeciationLookup:
     ONLY through the viscosity channel (lambda = W / eta(T,P)^alpha_i).
     Each salt is served by a single 2D (T, m) interpolation on the table's
     first pressure plane - or, for DEGENERATE grids (change v7.1), a 1D
-    interpolation along the single varying axis."""
+    interpolation along the single varying axis.
+    change 19: 'I_formal' is now an interpolated column alongside 'I_eff',
+    so either can serve as the model coordinate."""
 
     def __init__(self, spec_df):
         self.interp2d = {}
         self.P_plane = {}
         self._warned = set()
-        all_cols = list(ION_FREE_COL.values()) + PAIR_COLS + ['I_eff']
+        all_cols = list(ION_FREE_COL.values()) + PAIR_COLS + ['I_eff', 'I_formal']
         m_tol = 10.0 ** (-MERGE_DECIMALS)
 
         def _f_2d(pts, vals):
@@ -788,7 +828,8 @@ class IonConductivityModel:
         """Primary prediction interface (change 13). Salt-name-free.
 
         speciated_composition: plain dict
-          { "I_eff": float or array,
+          { "I_eff": float or array,   # change 19: interface field name kept;
+                                       # it carries the model's I_COORD value
             "free_molality": {"Na":..., "Cl":..., "K":..., "Mg":..., "Ca":...,
                               "SO4":..., "NH4":...},          # mol/kg, free ions
             "pair_molality": {"KSO4":..., "NaSO4":..., "MgSO4":...},
@@ -878,12 +919,13 @@ class IonConductivityModel:
                                 P_MPa=None):
         """Thin adapter: builds the speciated_composition dict from the
         SpeciationLookup for a single salt and calls predict_conductivity,
-        so single-salt reconstruction tests keep working unchanged."""
+        so single-salt reconstruction tests keep working unchanged.
+        change 19: the I coordinate is pulled from the I_COORD column."""
         if self.speciation is None:
             raise RuntimeError('predict_from_speciation() requires a SpeciationLookup.')
         T_K = np.atleast_1d(np.asarray(T_K, dtype=float))
         molality = np.atleast_1d(np.asarray(molality, dtype=float))
-        I = self.speciation.get(salt_key, T_K, molality, 'I_eff', P_MPa)
+        I = self.speciation.get(salt_key, T_K, molality, I_COORD, P_MPa)
         free = {ion: np.nan_to_num(self.speciation.get(salt_key, T_K, molality,
                                                        col, P_MPa))
                 for ion, col in ION_FREE_COL.items()}
@@ -899,13 +941,14 @@ class IonConductivityModel:
         return self.predict_conductivity(comp, T_K, P_use, extrap_mode=extrap_mode)
 
     def predict(self, salt_name, T_K, molality, allow_extrapolation_nan=True, P_MPa=None):
-        """Legacy stoichiometry-keyed prediction (kept for compatibility)."""
+        """Legacy stoichiometry-keyed prediction (kept for compatibility).
+        change 19: the I coordinate is pulled from the I_COORD column."""
         stoich = self.stoich_for(salt_name)
         T_K = np.atleast_1d(np.asarray(T_K, dtype=float))
         molality = np.atleast_1d(np.asarray(molality, dtype=float))
         if self.speciation is None:
             raise RuntimeError("predict() requires a SpeciationLookup.")
-        I = self.speciation.get(salt_name, T_K, molality, 'I_eff', P_MPa)
+        I = self.speciation.get(salt_name, T_K, molality, I_COORD, P_MPa)
         total = np.zeros_like(T_K, dtype=float)
         for ion_name in stoich:
             spline = self.ion(ion_name)
@@ -1128,7 +1171,9 @@ def _clean_speciated_rows(d, tag, require_ambient):
           at exactly this resolved state.
     require_ambient=True (all FIT salts and validation stashes) drops
     non-ambient rows so none can reach any fit; TEST-ONLY pools keep their
-    pressure rows (tagged Ambient=False) for staged evaluation (change 9)."""
+    pressure rows (tagged Ambient=False) for staged evaluation (change 9).
+    change 19: the working coordinate column 'I' is taken from I_COORD
+    ('I_eff' speciated, or 'I_formal' stoichiometric)."""
     d = d.copy()
     if d.empty:
         raise ValueError(f"No rows found for {tag}. Check CSV.")
@@ -1140,7 +1185,7 @@ def _clean_speciated_rows(d, tag, require_ambient):
     d = d.rename(columns={'Molality_molkg': 'Molality', 'Temperature_C': 'Temperature',
                           'Conductivity_mScm': 'Conductivity'})
     d['temp_K'] = d['Temperature'] + 273.15
-    d['I'] = d['I_eff']
+    d['I'] = d[I_COORD]
     d['Ambient'] = (d['Source'] == 'McCleskey2011') | \
         ((d['Pressure_MPa'] - REFERENCE_PRESSURE_MPA).abs() <= AMBIENT_P_TOL_MPA)
     if require_ambient:
@@ -1195,7 +1240,8 @@ print(f"\nSource roles: TRAINING={TRAINING_SOURCES}  PROMOTED={PROMOTED_SALTS_BY
 print(f"VALIDATION={VALIDATION_SALTS_BY_SOURCE}  TEST-POOL EXTRAS={HELDOUT_EXTRA_SOURCES}")
 print(f"RELATIVE (staged)={RELATIVE_SOURCES}")
 print(f"Switches: SQRT_I={SQRT_I}  WALDEN={WALDEN}  WALDEN_ALPHA_FIT={WALDEN_ALPHA_FIT}  "
-      f"INCLUDE_PAN={INCLUDE_PAN}  SPECIATION_DB={SPECIATION_DB}  FIT_MODE={FIT_MODE}")
+      f"INCLUDE_PAN={INCLUDE_PAN}  SPECIATION_DB={SPECIATION_DB}  FIT_MODE={FIT_MODE}  "
+      f"I_COORD={I_COORD}")
 print(f"Ambient policy: McCleskey2011 rows ambient by definition; others "
       f"|P-{REFERENCE_PRESSURE_MPA}| <= {AMBIENT_P_TOL_MPA} MPa; Psat switch at "
       f"{PSAT_SWITCH_T_K:.0f} K.")
@@ -1226,7 +1272,7 @@ for salt in ALL_SALTS:
           f"{sorted(d['Source'].unique())}, "
           f"P {d['Pressure_MPa'].min():.1f}-{d['Pressure_MPa'].max():.1f} MPa, "
           f"molality {d['Molality'].min():.4f}-{d['Molality'].max():.4f} mol/kg, "
-          f"I_eff {d['I'].min():.4f}-{d['I'].max():.4f} mol/kg "
+          f"{I_COORD} {d['I'].min():.4f}-{d['I'].max():.4f} mol/kg "
           f"(I_eff/I_formal down to {(d['I_eff']/d['I_formal']).min():.3f})")
     for src, salts in VALIDATION_SALTS_BY_SOURCE.items():
         if salt not in salts:
@@ -1576,7 +1622,7 @@ df_cl_ion = pd.DataFrame({'Source': df_kcl['Source'], 'temp_K': df_kcl['temp_K']
                           'Ambient': True,
                           'From_Extrapolated_Known': False})
 print("\n" + "=" * 70)
-print("SEQUENTIAL chain (PRODUCTION fit)")
+print(f"SEQUENTIAL chain (PRODUCTION fit)  [I coordinate: {I_COORD}]")
 print("=" * 70)
 model = IonConductivityModel(speciation=spec_lookup)
 spline_k, k_t_range, k_I_range, df_k_ion = fit_lambda_spline(
@@ -1999,7 +2045,7 @@ fig = plt.figure(figsize=(16, 9))
 for i, (name, (spl, tr, ir, ion_df)) in enumerate(ION_SPLINES.items(), start=1):
     ax = fig.add_subplot(2, 4, i, projection='3d')
     plot_ion_spline(spl, tr, ir, ion_df, name, ax)
-fig.suptitle(f'Ionic molar conductivity surfaces ({FIT_MODE} fit; '
+fig.suptitle(f'Ionic molar conductivity surfaces ({FIT_MODE} fit, I={I_COORD}; '
              f'dots = sequential-chain derived points)', y=0.98)
 fig.tight_layout()
 save_fig(fig, 'ionic_surfaces')
@@ -2014,7 +2060,7 @@ for name, (spl, tr, ir, ion_df) in ION_SPLINES.items():
     save_fig(fig, f'ion_surface_{safe}')
     plt.close(fig)
 
-print(f"\nCell 1 complete (FIT_MODE={FIT_MODE}).")
+print(f"\nCell 1 complete (FIT_MODE={FIT_MODE}, I_COORD={I_COORD}).")
 for name, (spl, tr, ir, _) in ION_SPLINES.items():
     print(f"  {name:12s} T {tr[0]:.1f}-{tr[1]:.1f} K, I_eff {ir[0]:.4f}-{ir[1]:.4f} mol/kg, "
           f"alpha={spl.alpha:.3f} [{spl.method}]")
