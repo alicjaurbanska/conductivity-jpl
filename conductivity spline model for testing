@@ -1,25 +1,5 @@
 # ==========================================================
-# CONDUCTIVITY MODEL  (v10)
-#   change 17: infinite-dilution lambda_0 anchor rows at I = 0
-#     (McCleskey et al. 2012 Table 1 quadratics, 0-95 C), injected per ion
-#     in fit_lambda_spline; anchors exempt from the residual outlier
-#     filter; validate_physics low-I diagnostic floor raised to 1e-3
-#     because d(lambda)/dI diverges as 1/sqrt(I) at the anchored edge
-#     (limiting-law behaviour, not a fit defect).
-#   change 19: I_COORD switch ('I_eff' | 'I_formal'). Selects which ionic
-#     strength column is the spline coordinate I, for BOTH training and
-#     prediction. 'I_eff' (speciated) is the PRODUCTION default; 'I_formal'
-#     (stoichiometric, full-dissociation) is an ABLATION variant that
-#     removes the speciation dependence from the COORDINATE channel only.
-#     Free-ion molalities and the pair terms stay speciated in both
-#     variants, so the free-ion MULTIPLIER channel is untouched; comparing
-#     the two variants isolates how much of the speciation error enters
-#     through the coordinate. NOTE: in the 'I_formal' variant the shared
-#     MC12 pair submodel and the lambda_0-anchored surfaces receive formal
-#     I, which deviates from the coefficients' original speciated-I
-#     convention - accepted for the ablation. Set via
-#     I_COORD_OVERRIDE before running this cell. Figure axis labels still
-#     read I_eff (cosmetic only).
+# IONIC CONDUCTIVITY SPLINE MODEL
 # ==========================================================
 
 import os
@@ -34,7 +14,8 @@ from scipy.spatial import Delaunay
 FIG_DIR = globals().get('FIG_DIR_OVERRIDE', 'Figures')
 os.makedirs(FIG_DIR, exist_ok=True)
 
-# ---- MASTER SWITCHES -------------------------------------------------
+# These switches were used for testing to compare different configurations - do not change.
+
 SQRT_I = True
 WALDEN = True                # PRODUCTION DEFAULT (change 1)
 WALDEN_ALPHA_FIT = True      # PRODUCTION DEFAULT (change 1): per-ion alpha_i
