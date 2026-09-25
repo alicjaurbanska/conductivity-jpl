@@ -15,7 +15,7 @@ from matplotlib import gridspec, cm
 _ORIG_SHOW = plt.show
 
 GITHUB_RAW = 'https://raw.githubusercontent.com/alicjaurbanska/conductivity-jpl/main/'
-MODEL_SOURCE_PATH = 'conductivity spline model'
+MODEL_SOURCE_PATH = 'conductivity spline model'   # exact file name/path in the repo
 
 VARIANTS = {
     'supcrt_hkf':    'SUPCRT / HKF',
@@ -40,32 +40,76 @@ MIN_PTS_CURVE = 2             # groups with fewer in-window points: scored
 XLIM_REF_ISO = {'MgSO4': 0.101}
 XLIM_PAD_K = 2.0
 
+# ---- fetch model source and patch the variant lines -------------------
 print(f'Fetching model source: {MODEL_SOURCE_PATH}')
-source = requests.get(GITHUB_RAW + quote(MODEL_SOURCE_PATH)).text
-if 'SPECIATION_DB_OVERRIDE' not in source:
-    raise RuntimeError('conductivity_model.py on GitHub does not contain the '
-                       'override hooks -- apply the 4 edits and push first.')
+resp = requests.get(GITHUB_RAW + quote(MODEL_SOURCE_PATH))
+if resp.status_code != 200:
+    raise RuntimeError(f'Could not fetch {MODEL_SOURCE_PATH} from GitHub '
+                       f'(HTTP {resp.status_code}). Check the file name and path.')
+source = resp.text
+
+import re
+_DB_RE = re.compile(r"^SPECIATION_DB = '[^']*'.*$", re.M)   # any production DB
+_FIG_LINE = "FIG_DIR = 'Figures'"
+_MISS_LINE = "_missing = df['I_eff'].isna()\n"
+if not _DB_RE.search(source):
+    raise RuntimeError('Model source on GitHub has no SPECIATION_DB line -- '
+                       'push the current model cell.')
+for _line in (_FIG_LINE, _MISS_LINE):
+    if _line not in source:
+        raise RuntimeError(f'Model source on GitHub has no line {_line!r} -- '
+                           f'push the current model cell.')
+
+# Non-ambient rows are never used in this ambient comparison, so a variant's
+# speciation table may lack them. Drop such rows before the model's merge
+# check; the check itself still runs on every ambient row.
+_DROP_NONAMBIENT_GAPS = (
+    "_nonamb_gap = (df['I_eff'].isna() & (df['Source'] != 'McCleskey2011') &\n"
+    "               ((df['Pressure_MPa'] - REFERENCE_PRESSURE_MPA).abs() > AMBIENT_P_TOL_MPA))\n"
+    "if _nonamb_gap.any():\n"
+    "    print(f'[comparison] dropping {int(_nonamb_gap.sum())} non-ambient row(s) '\n"
+    "          f'with no speciation in {SPECIATION_FILE} (not used at ambient P).')\n"
+    "    df = df[~_nonamb_gap].copy()\n"
+)
+
+def variant_source(key):
+    s = _DB_RE.sub(f"SPECIATION_DB = '{key}'", source, count=1)
+    s = s.replace(_FIG_LINE, f"FIG_DIR = 'Figures_{key}'", 1)
+    return s.replace(_MISS_LINE, _DROP_NONAMBIENT_GAPS + _MISS_LINE, 1)
+
+# ---- fetch the McCleskey (2012) baseline -----------------------------
+MC12_SOURCE_PATH = 'MC12 conductivity model'
+print(f'Fetching MC12 source: {MC12_SOURCE_PATH}')
+resp_mc = requests.get(GITHUB_RAW + quote(MC12_SOURCE_PATH))
+if resp_mc.status_code != 200:
+    raise RuntimeError(f'Could not fetch {MC12_SOURCE_PATH} from GitHub '
+                       f'(HTTP {resp_mc.status_code}). Check the file name and path.')
+plt.show = lambda *a, **k: None          # silence any figures in the MC12 file
+_mc12_ns = {'__name__': 'mc12_conductivity_model'}
+exec(compile(resp_mc.text, MC12_SOURCE_PATH, 'exec'), _mc12_ns)
+plt.close('all')
+if 'mccleskey2012_conductivity' not in _mc12_ns:
+    raise RuntimeError(f'{MC12_SOURCE_PATH} defines no function '
+                       f'mccleskey2012_conductivity.')
+mccleskey2012_conductivity = _mc12_ns['mccleskey2012_conductivity']
 
 # ---- retrain loop ----------------------------------------------------
 trained, failed = {}, {}
+plt.show = lambda *a, **k: None          # silence model figures during retrains
 for key, label in VARIANTS.items():
     print('\n' + '#' * 70)
     print(f'# RETRAIN: {key}  ({label})')
     print('#' * 70)
-    g = {'__name__': f'conductivity_model_{key}',
-         'SPECIATION_DB_OVERRIDE': key,
-         'FIG_DIR_OVERRIDE': f'Figures_{key}',
-         'DROP_UNSPECIATED': True,
-         'QUIET_PLOTS': True}
+    g = {'__name__': f'conductivity_model_{key}'}
     try:
-        exec(compile(source, f'conductivity_model[{key}]', 'exec'), g)
+        exec(compile(variant_source(key), f'conductivity_model[{key}]', 'exec'), g)
         trained[key] = g
         print(f'\n[{key}] retrain OK.')
     except Exception as e:
         failed[key] = traceback.format_exc()
         print(f'\n[{key}] RETRAIN FAILED: {e}')
+    plt.close('all')
 plt.show = _ORIG_SHOW
-plt.close('all')
 
 if failed:
     print('\nFailed variants (a gate tripping IS a result):')
@@ -120,7 +164,7 @@ PLOT_SALTS = [s for s in ['NaCl', 'MgSO4', 'NH4Cl', 'KCl', 'Na2SO4',
                           'K2SO4', 'CaCl2', 'CaSO4', 'MgCl2']
               if s in ref['salt_dfs'] and not ref['salt_dfs'][s].empty]
 
-iso_registry = {}     # salt -> list of dicts (m_grp, m_eval, data, window)
+iso_registry = {}     # salt -> list of dicts (m_grp, m_eval, data, cov)
 for salt in PLOT_SALTS:
     d = ref['salt_dfs'][salt]
     d = d[d['Ambient']].copy()
@@ -131,33 +175,43 @@ for salt in PLOT_SALTS:
     for m0 in sorted(d['m_grp'].unique()):
         sel = d[d['m_grp'] == m0]
         m_eval = float(sel['Molality'].mean())
-        T_lo, T_hi = float(sel['temp_K'].min()), float(sel['temp_K'].max())
-        if T_hi <= T_lo:                      # single-T group: no window
-            print(f'  [{salt} @ {m0:g}] single temperature -- no curve')
-        # ---- common-window determination ----
-        T_try = np.linspace(T_lo, T_hi, NG) if T_hi > T_lo else np.array([T_lo])
-        m_try = np.full_like(T_try, m_eval)
-        allfin = np.ones_like(T_try, dtype=bool)
+        # ---- per-variant coverage at each point's OWN (T, m) ----
+        # A point counts for variant k if BOTH models (this work, MC12) give
+        # a finite prediction with k's speciation, so the two models are
+        # always compared on the same points within a variant.
+        T_pts = sel['temp_K'].values
+        m_pts = sel['Molality'].values
+        cov = {}
         for k in vkeys:
+            ok = np.ones(len(sel), dtype=bool)
             for name, fn in SCORERS.items():
-                p = safe_pred(fn, trained[k], salt, T_try, m_try)
-                allfin &= np.isfinite(p)
-        if not allfin.any():
-            print(f'  [{salt} @ {m0:g}] no common window -- isopleth skipped')
+                ok &= np.isfinite(safe_pred(fn, trained[k], salt, T_pts, m_pts))
+            cov[k] = ok
+        anycov = np.any(list(cov.values()), axis=0)
+        if not anycov.any():
+            print(f'  [{salt} @ {m0:g}] no variant covers any point -- isopleth skipped')
             continue
-        idx = np.flatnonzero(allfin)
-        splits = np.split(idx, np.flatnonzero(np.diff(idx) > 1) + 1)
-        run = max(splits, key=len)
-        Tw_lo, Tw_hi = T_try[run[0]], T_try[run[-1]]
-        if (Tw_lo, Tw_hi) != (T_lo, T_hi):
-            print(f'  [{salt} @ {m0:g}] window clipped to '
-                  f'{Tw_lo:.1f}-{Tw_hi:.1f} K (data span '
-                  f'{T_lo:.1f}-{T_hi:.1f} K)')
-        inwin = (sel['temp_K'] >= Tw_lo - 1e-9) & (sel['temp_K'] <= Tw_hi + 1e-9)
+        missing = [f'{k} {int(cov[k].sum())}/{len(sel)}'
+                   for k in vkeys if cov[k].sum() < len(sel)]
+        if missing:
+            print(f'  [{salt} @ {m0:g}] partial coverage: ' + ', '.join(missing))
         entries.append(dict(m_grp=m0, m_eval=m_eval, data=sel,
-                            inwin=inwin.values, Tw=(Tw_lo, Tw_hi)))
+                            cov=cov, anycov=anycov))
     if entries:
         iso_registry[salt] = entries
+
+# ---- curve grid per variant: T over that variant's covered points ------
+def curve_grid(e, k):
+    """T grid over variant k's covered points; molality follows the measured
+    molality of those points (averaged per T), so the curve stays inside the
+    speciation table. Returns None if fewer than MIN_PTS_CURVE temperatures."""
+    sc = (e['data'][e['cov'][k]].groupby('temp_K', as_index=False)['Molality']
+          .mean().sort_values('temp_K'))
+    if len(sc) < MIN_PTS_CURVE:
+        return None
+    T_grid = np.linspace(sc['temp_K'].min(), sc['temp_K'].max(), NG)
+    m_grid = np.interp(T_grid, sc['temp_K'].values, sc['Molality'].values)
+    return T_grid, m_grid
 
 # ---- isopleth colors: viridis ordered by molality per salt -----------
 def iso_color(salt, e):
@@ -168,17 +222,17 @@ def iso_color(salt, e):
     rank = sorted(ms).index(e['m_grp'])
     return cm.viridis(0.08 + 0.84 * rank / (len(ms) - 1))
 
-# ---- score exactly the in-window points ------------------------------
+# ---- score each variant on its own covered points -------------------
 rows = []
 for salt, entries in iso_registry.items():
     for e in entries:
-        sel = e['data'][e['inwin']]
-        if sel.empty:
-            continue
-        T = sel['temp_K'].values
-        m = sel['Molality'].values
-        meas = sel['Conductivity'].values
         for k in vkeys:
+            sel = e['data'][e['cov'][k]]
+            if sel.empty:
+                continue
+            T = sel['temp_K'].values
+            m = sel['Molality'].values
+            meas = sel['Conductivity'].values
             for name, fn in SCORERS.items():
                 pred = safe_pred(fn, trained[k], salt, T, m)
                 ok = np.isfinite(pred) & (meas > 0)
@@ -190,33 +244,44 @@ for salt, entries in iso_registry.items():
                         rel_rmse=100 * float(np.sqrt(np.mean(dev ** 2))),
                         mean_bias=100 * float(np.mean(dev))))
 st = pd.DataFrame(rows)
-st.to_csv('comparison_v4_common.csv', index=False)
+if st.empty:
+    raise RuntimeError('No isopleth could be scored: every prediction was NaN. '
+                       'A scorer is failing silently inside safe_pred -- call '
+                       'the scorers directly on a few rows to see the error.')
 
 print('\n' + '=' * 70)
-print('rel. RMSE (%) on the PLOTTED in-window points (identical for every')
-print('variant and both models; aggregated over ALL isopleths per salt)')
+print('rel. RMSE (%) per variant on that variant\'s OWN covered points')
+print('(both models on the same points within a variant; point sets can')
+print('differ between variants -- see the n table)')
 print('=' * 70)
+st['_w'] = st['n'] * (st['rel_rmse'] / 100) ** 2
 for name in SCORERS:
-    agg = (st[st['model'] == name]
-           .groupby(['salt', 'variant'])
-           .apply(lambda x: np.sqrt(np.average((x['rel_rmse'] / 100) ** 2,
-                                               weights=x['n'])) * 100)
-           .unstack())
+    sub = st[st['model'] == name]
+    g = sub.groupby(['salt', 'variant'])[['_w', 'n']].sum()
+    agg = (100 * np.sqrt(g['_w'] / g['n'])).unstack()
     print(f'\n--- {name} ---')
     print(agg.round(2).to_string())
+n_tab = (st[st['model'] == 'this work'].groupby(['salt', 'variant'])['n']
+         .sum().unstack().fillna(0).astype(int))
+n_all = pd.Series({s: sum(len(e['data']) for e in es)
+                   for s, es in iso_registry.items()}, name='total')
+print('\n--- n scored points per variant (total ambient points in last column) ---')
+print(n_tab.join(n_all).to_string())
+st = st.drop(columns='_w')
+st.to_csv('comparison_v4_common.csv', index=False)
 
 # ---- shared y-limits per salt (across both figures) ------------------
 ylims = {}
 for salt, entries in iso_registry.items():
     vals = []
     for e in entries:
-        Tw_lo, Tw_hi = e['Tw']
-        T_grid = np.linspace(Tw_lo, Tw_hi, NG)
-        m_grid = np.full_like(T_grid, e['m_eval'])
         vals.append(e['data']['Conductivity'].values / 10.0)
         for k in vkeys:
+            cg = curve_grid(e, k)
+            if cg is None:
+                continue
             for name, fn in SCORERS.items():
-                p = safe_pred(fn, trained[k], salt, T_grid, m_grid) / 10.0
+                p = safe_pred(fn, trained[k], salt, *cg) / 10.0
                 vals.append(p[np.isfinite(p)])
     allv = np.concatenate([v for v in vals if len(v)])
     lo, hi = np.nanmin(allv), np.nanmax(allv)
@@ -254,8 +319,7 @@ def make_figure(model_name, fname):
         n_scored = 0
         for e in iso_registry[salt]:
             col = iso_color(salt, e)
-            sel, inwin = e['data'], e['inwin']
-            Tw_lo, Tw_hi = e['Tw']
+            sel, inwin = e['data'], e['anycov']
             ax.scatter(sel['temp_K'][inwin], sel['Conductivity'][inwin] / 10.0,
                        s=24, color=col, edgecolor='k', linewidth=0.4,
                        zorder=5, label=f"{e['m_grp']:g}")
@@ -265,17 +329,18 @@ def make_figure(model_name, fname):
                            s=20, facecolor='none', edgecolor='0.6',
                            linewidth=0.8, zorder=4)
             n_scored += int(inwin.sum())
-            if inwin.sum() >= MIN_PTS_CURVE and Tw_hi > Tw_lo:
-                T_grid = np.linspace(Tw_lo, Tw_hi, NG)
-                m_grid = np.full_like(T_grid, e['m_eval'])
-                for k in vkeys:
-                    pred = safe_pred(fn, trained[k], salt, T_grid, m_grid)
-                    ax.plot(T_grid, pred / 10.0, color=col,
-                            linestyle=VSTYLE[k], linewidth=1.2, alpha=0.85)
-            Tp = sel['temp_K'][inwin].values
-            mp = sel['Molality'][inwin].values
-            msd = sel['Conductivity'][inwin].values
             for k in vkeys:
+                cg = curve_grid(e, k)
+                if cg is None:
+                    continue
+                pred = safe_pred(fn, trained[k], salt, *cg)
+                ax.plot(cg[0], pred / 10.0, color=col,
+                        linestyle=VSTYLE[k], linewidth=1.2, alpha=0.85)
+            for k in vkeys:
+                ck = e['cov'][k]
+                Tp = sel['temp_K'][ck].values
+                mp = sel['Molality'][ck].values
+                msd = sel['Conductivity'][ck].values
                 pred = safe_pred(fn, trained[k], salt, Tp, mp)
                 ok = np.isfinite(pred) & (msd > 0)
                 if ok.any():
@@ -302,12 +367,12 @@ def make_figure(model_name, fname):
     handles.insert(1, plt.Line2D([0], [0], marker='o', color='w',
                                  markerfacecolor='none',
                                  markeredgecolor='0.6', markersize=6,
-                                 label='experiment (outside common window)'))
+                                 label='experiment (no variant covers it)'))
     fig.legend(handles=handles, loc='lower center',
                ncol=min(len(handles), 4), fontsize=8, frameon=False)
     fig.suptitle('Binary-solution conductivity: speciation variants on a '
-                 f'common T window, scored with {model_name}', fontsize=13)
-    fig.tight_layout(rect=[0, 0.05, 1, 0.96])
+                 f'own coverage, scored with {model_name}', fontsize=13)
+    fig.subplots_adjust(left=0.05, right=0.98, bottom=0.09, top=0.93)
     fig.savefig(fname + '.pdf')
     fig.savefig(fname + '.png', dpi=300)
     plt.show()
@@ -317,16 +382,19 @@ make_figure('this work', 'isopleths_thiswork')
 make_figure('MC12', 'isopleths_MC12')
 
 print('\nNOTES:')
-print(' 1. ALL molality groups are shown and scored. Colors: viridis by')
-print('    molality (dark = dilute, bright = concentrated).')
-print(' 2. Every curve spans the largest contiguous T window where ALL')
-print('    variants and BOTH models are finite; clipping is printed above.')
-print(' 3. Hollow grey points are outside the common window: shown, not')
-print('    scored. Groups with < 2 in-window points get no curve.')
-print(' 4. The RMSE table is computed from exactly the plotted scored')
-print('    points; y-limits per salt are shared between the two figures.')
-print(' 5. The near-zero groups (~1e-4 mol/kg rounding to 0.000) are near-')
-print('    water isopleths -- visually flat, but kept per request.')
-print(' 6. MgSO4 x-axis trimmed to the 0.101 mol/kg span (XLIM_REF_ISO);')
-print('    at ambient P the MgSO4 panel is Mahboub-only -- keep the source')
-print('    caveat in mind when reading it.')
+print(' 1. ALL molality groups are shown. Colors: viridis by molality')
+print('    (dark = dilute, bright = concentrated).')
+print(' 2. Each variant is scored on the points where BOTH models give a')
+print('    finite prediction with that variant\'s speciation. A variant that')
+print('    does not cover a point (e.g. Pitzer at high I) simply skips it;')
+print('    the others still score it. Point counts are in the n table.')
+print(' 3. Filled points are scored by at least one variant; hollow grey')
+print('    points are covered by no variant. Each variant\'s curve spans its')
+print('    own covered temperatures, with molality following the data.')
+print(' 4. Because point sets differ between variants, compare RMSE across')
+print('    variants together with n; this work vs MC12 within one variant is')
+print('    always a same-points comparison.')
+print(' 5. Pitzer uses a different activity framework (specific ion')
+print('    interaction, few explicit ion pairs), so its free-ion / pair split')
+print('    is not directly comparable with the ion-association variants.')
+print(' 6. MgSO4 x-axis trimmed to the 0.101 mol/kg span (XLIM_REF_ISO).')
