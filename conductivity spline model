@@ -21,7 +21,7 @@ FIG_DIR = 'Figures'
 os.makedirs(FIG_DIR, exist_ok=True)
 
 # ---- files -----------------------------------------------------------
-SPECIATION_DB = 'supcrt_edh'    # production: SUPCRT + extended Debye-Huckel
+SPECIATION_DB = 'supcrt_hkf'    # production: SUPCRT + HKF (b-gamma) activity model
 SPECIATION_FILE = f'speciation_{SPECIATION_DB}.csv'
 LIBRARY_FILE = 'empirical_conductivity_library.csv'
 DATA_FROM_GITHUB = True
