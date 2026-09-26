@@ -1,5 +1,5 @@
 # ==========================================================
-# CELL 3 - ALTERNATIVE DECONVOLUTION CHAIN (v7)
+# CELL 3 - ALTERNATIVE DECONVOLUTION CHAIN (v8)
 #   SO4 2- derived from K2SO4 (via K+) instead of Na2SO4 (via Na+)
 #   -> Na2SO4 becomes the held-out additivity test
 #   -> direct comparison of the two SO4 2- ion surfaces
@@ -12,9 +12,9 @@ import warnings
 from scipy import stats as sstats
 
 for _name in ('model', 'salt_dfs', 'spec_lookup', 'save_fig', 'FIG_DIR',
-              'FIT_MODE', 'REFERENCE_PRESSURE_MPA', 'IonConductivityModel',
+              'REFERENCE_PRESSURE_MPA', 'IonConductivityModel',
               'subtract_ion_molar', 'ION_FREE_COL', 'PAIR_LAMBDA_FOR_COL',
-              'SPECIATION_DB', 'SEQ_SPLINES'):
+              'SPECIATION_DB', 'SEQ_SPLINES', 'df_so4_ion'):
     if _name not in globals():
         raise NameError(f"'{_name}' not found - run Cell 1 first.")
 if 'mccleskey2012_conductivity' not in globals():
@@ -81,7 +81,7 @@ def alt_diagnose_error_structure(label, T_vals, M_vals, pct_dev):
 # ==========================================================
 
 d_k2_all = salt_dfs['K2SO4']
-d_k2 = d_k2_all[d_k2_all['Ambient']].copy()
+d_k2 = d_k2_all[d_k2_all['Ambient']].reset_index(drop=True)
 print(f"\nK2SO4 source rows for the ALT deconvolution: {len(d_k2)} ambient "
       f"of {len(d_k2_all)} total (non-ambient rows belong to the staged "
       f"pressure test and never enter fitting).")
@@ -125,6 +125,8 @@ Tf, If = Tg.ravel(), Ig.ravel()
 lam_seq = spline_so4_seq.ev_or_nan(Tf, If)
 lam_alt = spline_so4_alt.ev_or_nan(Tf, If)
 both = np.isfinite(lam_seq) & np.isfinite(lam_alt)
+if both.sum() < 3:
+    raise RuntimeError("Fewer than 3 grid points lie inside both SO4 hulls.")
 pct_diff = np.full_like(lam_seq, np.nan)
 pct_diff[both] = 100.0 * (lam_alt[both] - lam_seq[both]) / lam_seq[both]
 
@@ -157,6 +159,7 @@ save_fig(fig, 'so4_surface_difference_map')
 plt.show()
 
 # --- isotherm slices with derived data points from both chains ---
+# (I = 0 lambda_0 anchor rows are left out: they cannot sit on a log axis)
 fig, ax = plt.subplots(figsize=(6.8, 4.6))
 T_slices = np.linspace(T_lo + 1, T_hi - 1, 4)
 cmap = plt.get_cmap('plasma')
@@ -170,9 +173,11 @@ for i, tval in enumerate(T_slices):
     ax.plot(I_line[ok_s], y_seq[ok_s], color=color, lw=1.4,
             label=f'{tval:.0f} K')
     ax.plot(I_line[ok_a], y_alt[ok_a], color=color, lw=1.2, ls='--')
-ax.scatter(df_so4_ion['I'], df_so4_ion['Lambda'], s=12, color='0.3',
+_p_seq = df_so4_ion[df_so4_ion['I'] > 0]
+_p_alt = df_so4_alt[df_so4_alt['I'] > 0]
+ax.scatter(_p_seq['I'], _p_seq['Lambda'], s=12, color='0.3',
            alpha=0.5, label='derived pts (Na2SO4 chain)')
-ax.scatter(df_so4_alt['I'], df_so4_alt['Lambda'], s=14, facecolors='none',
+ax.scatter(_p_alt['I'], _p_alt['Lambda'], s=14, facecolors='none',
            edgecolors='green', alpha=0.7, label='derived pts (K2SO4 chain)')
 ax.set_xscale('log')
 ax.set_xlabel(r'I$_{eff}$ (mol kg$^{-1}$)')
@@ -210,9 +215,9 @@ if 'm_pair_MgSO4' in d.columns:
 comp = {'I_eff': I_eff, 'free_molality': free, 'pair_molality': pairs,
         'speciation_source': SPECIATION_DB, 'sample_id': 'Na2SO4 held-out (ALT)'}
 
+# model is ambient-only: no pressure argument
 kappa_alt, diag = model_alt.predict_conductivity(
-    comp, T_K, REFERENCE_PRESSURE_MPA, extrap_mode='linear',
-    return_diagnostics=True)
+    comp, T_K, extrap_mode='linear', return_diagnostics=True)
 kappa_alt = np.atleast_1d(kappa_alt)
 
 n_extrap = np.zeros(len(d), dtype=bool)
@@ -225,7 +230,26 @@ for sp, flag in diag['flags']['extrapolated'].items():
     if k:
         print(f"  {sp}: {k} point(s) recovered via cold linear extrapolation.")
     n_extrap |= flag
-usable = np.isfinite(kappa_alt)
+
+# --- production model on the same rows: IN-SAMPLE reference only ---
+kappa_prod = np.atleast_1d(model.predict_conductivity(
+    comp, T_K, extrap_mode='linear'))
+
+# --- MC12 baseline, same speciation ---
+mc12_species = {'Na+': np.nan_to_num(d['m_free_Na'].values),
+                'SO4-2': np.nan_to_num(d['m_free_SO4'].values)}
+if 'm_pair_NaSO4' in d.columns:
+    mc12_species['NaSO4-'] = np.nan_to_num(d['m_pair_NaSO4'].values)
+with warnings.catch_warnings():
+    warnings.simplefilter('ignore')
+    kappa_mc12 = np.atleast_1d(mccleskey2012_conductivity(
+        mc12_species, T_C, I_eff_molkg=I_eff,
+        speciation_source=SPECIATION_DB, validate_range=False).sigma_mScm)
+
+# ALT and MC12 compared on the same points; production is a reference and
+# may be NaN on some of them (handled in the stats)
+usable = (np.isfinite(kappa_alt) & np.isfinite(kappa_mc12) &
+          np.isfinite(kappa_meas) & (kappa_meas > 0))
 print(f"Usable: {int(usable.sum())}/{len(d)} points "
       f"({int(n_extrap[usable].sum())} use cold-extrapolated ion lambdas).")
 if usable.sum() == 0:
@@ -238,19 +262,6 @@ print(f"NaSO4- pair share of predicted kappa (shared MC12 submodel): "
       f"min={np.nanmin(pf):.1%}, median={np.nanmedian(pf):.1%}, "
       f"max={np.nanmax(pf):.1%}.")
 
-# --- production model on the same rows: IN-SAMPLE reference only ---
-kappa_prod = np.atleast_1d(model.predict_conductivity(
-    comp, T_K, REFERENCE_PRESSURE_MPA, extrap_mode='linear'))
-
-# --- MC12 baseline, same speciation ---
-mc12_species = {'Na+': d['m_free_Na'].values, 'SO4-2': d['m_free_SO4'].values}
-if 'm_pair_NaSO4' in d.columns:
-    mc12_species['NaSO4-'] = np.nan_to_num(d['m_pair_NaSO4'].values)
-with warnings.catch_warnings():
-    warnings.simplefilter('ignore')
-    kappa_mc12 = np.atleast_1d(mccleskey2012_conductivity(
-        mc12_species, T_C, I_eff_molkg=I_eff,
-        speciation_source=SPECIATION_DB, validate_range=False).sigma_mScm)
 in_mc12_range = (T_C >= MC12_T_VALID_C[0]) & (T_C <= MC12_T_VALID_C[1]) & (I_eff <= 1.0)
 n_out = int((~in_mc12_range & usable).sum())
 if n_out:
@@ -269,8 +280,11 @@ dev_prod = 100.0 * (kappa_prod[u] - kappa_meas[u]) / kappa_meas[u]
 Tu_K, Tu_C, Mu, Iu, Su, Zu = T_K[u], T_C[u], M[u], I_eff[u], Source[u], kappa_meas[u]
 stable = Mu > PCT_STABLE_MOLALITY
 in_rng_u = in_mc12_range[u]
+if not stable.any():
+    raise RuntimeError(f"No usable Na2SO4 points with m > {PCT_STABLE_MOLALITY} mol/kg.")
 
 def _dev_line(name, dev, mask):
+    mask = mask & np.isfinite(dev)
     if mask.sum() == 0:
         print(f"  {name}: no points in this subset.")
         return
@@ -413,7 +427,7 @@ print("SUMMARY (easy read)")
 print("=" * 60)
 mae_a = np.mean(np.abs(dev_alt[stable]))
 mae_b = np.mean(np.abs(dev_mc12[stable]))
-mae_p = np.mean(np.abs(dev_prod[stable]))
+mae_p = np.nanmean(np.abs(dev_prod[stable]))
 print(f"1. Na2SO4 held out via the ALT chain (SO4 from K2SO4), m > "
       f"{PCT_STABLE_MOLALITY} mol/kg:")
 print(f"     ALT (held-out):        MAE {mae_a:.2f}%, bias {np.mean(dev_alt[stable]):+.2f}%")
