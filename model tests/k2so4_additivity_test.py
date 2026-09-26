@@ -1,5 +1,5 @@
 # ==========================================================
-# CELL 2 - K2SO4 HELD-OUT ADDITIVITY TEST (v7)
+# CELL 2 - K2SO4 HELD-OUT ADDITIVITY TEST (v8)
 #   Empirical ion-surface model vs McCleskey (2012) baseline
 # ==========================================================
 
@@ -10,7 +10,8 @@ import warnings
 from scipy import stats as sstats
 
 for _name in ('model', 'salt_dfs', 'spec_lookup', 'save_fig', 'FIG_DIR',
-              'FIT_MODE', 'TESTS_ARE_NONCIRCULAR', 'REFERENCE_PRESSURE_MPA'):
+              'REFERENCE_PRESSURE_MPA', 'ION_FREE_COL', 'PAIR_LAMBDA_FOR_COL',
+              'SPECIATION_DB', 'HELDOUT_SALTS', 'FIT_SALTS'):
     if _name not in globals():
         raise NameError(f"'{_name}' not found - run Cell 1 first.")
 if 'mccleskey2012_conductivity' not in globals():
@@ -19,17 +20,20 @@ if 'mccleskey2012_conductivity' not in globals():
 PCT_STABLE_MOLALITY = 0.01
 MC12_T_VALID_C = (0.0, 95.0)
 
-print("=== K2SO4 held-out additivity test (v7) ===")
+# The model cell fits only FIT_SALTS by sequential deconvolution; K2SO4 is
+# held out by construction.
+TESTS_ARE_NONCIRCULAR = ('K2SO4' in HELDOUT_SALTS) and ('K2SO4' not in FIT_SALTS)
+
+print("=== K2SO4 held-out additivity test (v8) ===")
 if not TESTS_ARE_NONCIRCULAR:
-    print("*** WARNING: FIT_MODE='joint' with JOINT_INCLUDE_ALL=True means "
-          "K2SO4 was IN the training set. This test is IN-SAMPLE, not a "
-          "held-out validation. Interpret accordingly. ***")
+    print("*** WARNING: K2SO4 is in FIT_SALTS, so it was IN the training set. "
+          "This test is IN-SAMPLE, not a held-out validation. ***")
 else:
-    print(f"FIT_MODE='{FIT_MODE}': K2SO4 is genuinely held out (non-circular test).")
+    print("Sequential deconvolution: K2SO4 is genuinely held out (non-circular test).")
 print("CAVEAT (shared submodel): both this model and the MC12 baseline use the "
-      "McCleskey Table 1 KSO4- pair lambdas. The comparison is independent "
-      "only in the free-ion channel; the pair-channel share of kappa is "
-      "quantified below.")
+      "McCleskey Table 1 KSO4- pair lambdas (and the lambda_0 anchors). The "
+      "comparison is independent only in the free-ion channel; the pair-channel "
+      "share of kappa is quantified below.")
 
 # ==========================================================
 # SHARED DIAGNOSTIC HELPERS
@@ -106,9 +110,9 @@ if 'm_pair_MgSO4' in d.columns:
 comp = {'I_eff': I_eff, 'free_molality': free, 'pair_molality': pairs,
         'speciation_source': SPECIATION_DB, 'sample_id': 'K2SO4 held-out'}
 
+# model is ambient-only: no pressure argument
 kappa_model, diag = model.predict_conductivity(
-    comp, T_K, REFERENCE_PRESSURE_MPA, extrap_mode='linear',
-    return_diagnostics=True)
+    comp, T_K, extrap_mode='linear', return_diagnostics=True)
 kappa_model = np.atleast_1d(kappa_model)
 
 # ---- coverage report from diagnostics ----
@@ -125,7 +129,7 @@ for sp, flag in diag['flags']['extrapolated'].items():
         print(f"  {sp}: {k} point(s) recovered via cold linear extrapolation.")
     n_extrap |= flag
 
-usable = np.isfinite(kappa_model)
+usable = np.isfinite(kappa_model) & np.isfinite(kappa_meas) & (kappa_meas > 0)
 print(f"Usable: {int(usable.sum())}/{len(d)} points "
       f"({int(n_extrap[usable].sum())} of them use cold-extrapolated ion lambdas).")
 if usable.sum() == 0:
@@ -144,8 +148,8 @@ print(f"\nKSO4- pair share of predicted kappa (shared MC12 submodel): "
 # 2. McCLESKEY (2012) BASELINE - same speciation, same I_eff
 # ==========================================================
 
-mc12_species = {'K+': d['m_free_K'].values,
-                'SO4-2': d['m_free_SO4'].values}
+mc12_species = {'K+': np.nan_to_num(d['m_free_K'].values),
+                'SO4-2': np.nan_to_num(d['m_free_SO4'].values)}
 if 'm_pair_KSO4' in d.columns:
     mc12_species['KSO4-'] = np.nan_to_num(d['m_pair_KSO4'].values)
 
@@ -156,12 +160,21 @@ with warnings.catch_warnings():
         speciation_source=SPECIATION_DB, validate_range=False)
 kappa_mc12 = np.atleast_1d(mc12_res.sigma_mScm)
 
+# compare both models on the same points
+_n_before = int(usable.sum())
+usable &= np.isfinite(kappa_mc12)
+if int(usable.sum()) < _n_before:
+    print(f"Note: {_n_before - int(usable.sum())} point(s) dropped because MC12 "
+          f"returned non-finite values.")
+if usable.sum() == 0:
+    raise RuntimeError("No K2SO4 points usable by both models.")
+
 in_mc12_range = (T_C >= MC12_T_VALID_C[0]) & (T_C <= MC12_T_VALID_C[1]) & (I_eff <= 1.0)
 n_out_range = int((~in_mc12_range & usable).sum())
 if n_out_range:
     print(f"\nMC12 validity note: {n_out_range} usable point(s) lie outside the "
-      f"published MC12 range (0-95 C, I <= 1 mol/kg); MC12 is extrapolating "
-      f"its Table 1 polynomials there. Stats reported both ways below.")
+          f"published MC12 range (0-95 C, I <= 1 mol/kg); MC12 is extrapolating "
+          f"its Table 1 polynomials there. Stats reported both ways below.")
 
 # ==========================================================
 # 3. DEVIATION METRICS - both models
@@ -174,6 +187,8 @@ Tu_K, Tu_C, Mu, Iu, Su = T_K[u], T_C[u], M[u], I_eff[u], Source[u]
 Zu = kappa_meas[u]
 stable = Mu > PCT_STABLE_MOLALITY
 in_rng_u = in_mc12_range[u]
+if not stable.any():
+    raise RuntimeError(f"No usable K2SO4 points with m > {PCT_STABLE_MOLALITY} mol/kg.")
 
 def _dev_line(name, dev, mask):
     if mask.sum() == 0:
@@ -215,17 +230,16 @@ ax.axhspan(-10, 10, color='0.85', alpha=0.6, zorder=0, label=r'$\pm$10%')
 for i, src in enumerate(unique_sources):
     mask = Su == src
     ax.scatter(Mu[mask], pct_dev_model[mask], s=30, marker=markers[i % len(markers)],
-               color=MODEL_COLOR, zorder=3,
-               label=f'{src} (this model)' if i == 0 else None)
+               color=MODEL_COLOR, zorder=3, label=f'{src} (this model)')
     ax.scatter(Mu[mask], pct_dev_mc12[mask], s=30, marker=markers[i % len(markers)],
                facecolors='none', edgecolors=MC12_COLOR, zorder=3,
-               label=f'{src} (MC12)' if i == 0 else None)
+               label=f'{src} (MC12)')
 ax.axhline(0, color='black', lw=0.8)
 ax.set_xscale('log')
 ax.set_xlabel(r'K$_2$SO$_4$ molality (mol kg$^{-1}$)')
 ax.set_ylabel('Signed deviation (%)')
 ax.set_title(r'K$_2$SO$_4$ held-out: deviation vs molality (filled = this model, open = MC12)')
-ax.legend()
+ax.legend(fontsize=7)
 save_fig(fig, 'k2so4_deviation_vs_molality')
 plt.show()
 
@@ -300,7 +314,8 @@ for i, tval in enumerate(temps):
     z_line = np.atleast_1d(model.predict_from_speciation(
         'K2SO4', T_line, m_grid, extrap_mode='linear'))
     ok = np.isfinite(z_line)
-    ax.plot(m_grid[ok], z_line[ok], color=color, lw=1.3, label=f'{tval:.0f} K')
+    if ok.any():
+        ax.plot(m_grid[ok], z_line[ok], color=color, lw=1.3, label=f'{tval:.0f} K')
     # MC12 line at the same speciated grid
     spc = {'K+': np.nan_to_num(spec_lookup.get('K2SO4', T_line, m_grid, 'm_free_K')),
            'SO4-2': np.nan_to_num(spec_lookup.get('K2SO4', T_line, m_grid, 'm_free_SO4')),
@@ -310,9 +325,10 @@ for i, tval in enumerate(temps):
     if okI.any():
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
-            z_mc = mccleskey2012_conductivity(
-                {k: v[okI] for k, v in spc.items()}, tval - 273.15,
-                I_eff_molkg=I_line[okI], validate_range=False).sigma_mScm
+            z_mc = np.atleast_1d(mccleskey2012_conductivity(
+                {k: v[okI] for k, v in spc.items()}, T_line[okI] - 273.15,
+                I_eff_molkg=I_line[okI], speciation_source=SPECIATION_DB,
+                validate_range=False).sigma_mScm)
         ax.plot(m_grid[okI], z_mc, color=color, lw=1.0, ls=':')
 ax.set_xscale('log')
 ax.set_xlabel(r'K$_2$SO$_4$ molality (mol kg$^{-1}$)')
@@ -360,7 +376,8 @@ if (stable & in_rng_u).sum() and (~in_rng_u & stable).sum():
     mae_b_out = np.mean(np.abs(pct_dev_mc12[stable & ~in_rng_u]))
     print(f"2. Inside MC12 validity (0-95 C): this model {mae_m_in:.2f}% vs MC12 {mae_b_in:.2f}%.")
     print(f"   Outside (MC12 extrapolating):  this model {mae_m_out:.2f}% vs MC12 {mae_b_out:.2f}%.")
-print(f"3. Circularity caveats: {'test is IN-SAMPLE (joint fit trained on K2SO4)' if not TESTS_ARE_NONCIRCULAR else 'K2SO4 never entered training'};"
+print(f"3. Circularity caveats: "
+      f"{'K2SO4 never entered training' if TESTS_ARE_NONCIRCULAR else 'test is IN-SAMPLE (K2SO4 in FIT_SALTS)'};"
       f" both models share the KSO4- pair lambdas (pair share of kappa: "
       f"median {np.nanmedian(pf):.1%}), so the independent part of the "
       f"comparison is the free-ion channel.")
