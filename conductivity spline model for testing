@@ -956,7 +956,12 @@ if USE_PAN2021:
     PROMOTED_SALTS_BY_SOURCE['Pan2021'] = ['NaCl']
 VALIDATION_SALTS_BY_SOURCE = {}
 if USE_MAHBOUB:
-    VALIDATION_SALTS_BY_SOURCE['Mahboub'] = ['MgSO4', 'NaCl:MgSO4 (1:1)']
+    VALIDATION_SALTS_BY_SOURCE['Mahboub'] = ['MgSO4']
+# Salt mixtures are test data only, from any source: staged by Salt name
+# (rows must carry Mixture=True), never in a fit pool.
+MIXTURE_VALIDATION_SALTS = ['NaCl:MgSO4 (1:1)', 'NaCl:MgSO4 (1:2)',
+                            'NaCl:MgSO4 (2:1)', 'Na2SO4:KCl (1:1)',
+                            'Na2SO4:KCl (2:1)']
 HELDOUT_EXTRA_SOURCES = {}
 if USE_LARIONOV:
     HELDOUT_EXTRA_SOURCES['Larionov1984'] = ['MgSO4']
@@ -1010,6 +1015,14 @@ if 'Mixture' in df.columns:
     if _mix_leak.any():
         raise ValueError(f'MIXTURE GUARD: {int(_mix_leak.sum())} Mixture=True row(s) '
                          f'carry a single-salt name and would enter a fit pool.')
+else:
+    _mix_flag = pd.Series(False, index=df.index)
+if set(MIXTURE_VALIDATION_SALTS) & set(ALL_SALTS):
+    raise ValueError('MIXTURE GUARD: MIXTURE_VALIDATION_SALTS overlaps ALL_SALTS.')
+_mix_named = df['Salt'].isin(MIXTURE_VALIDATION_SALTS)
+if (_mix_named & ~_mix_flag).any():
+    raise ValueError(f'MIXTURE GUARD: {int((_mix_named & ~_mix_flag).sum())} row(s) '
+                     f'named in MIXTURE_VALIDATION_SALTS lack Mixture=True.')
 
 def _assert_units(df):
     mc = df[(df['Source'] == 'McCleskey2011') & (df['Salt'] == 'NaCl') &
@@ -1057,8 +1070,9 @@ for _src, _salts in VALIDATION_SALTS_BY_SOURCE.items():
 is_relative_row = pd.Series(False, index=df.index)
 for _src, _salts in RELATIVE_SOURCES.items():
     is_relative_row |= (df['Source'] == _src) & df['Salt'].isin(_salts)
+is_mixture_validation_row = _mix_flag & df['Salt'].isin(MIXTURE_VALIDATION_SALTS)
 _keep = (is_training_row | is_promoted_row | is_validation_row |
-         is_heldout_extra | is_relative_row)
+         is_heldout_extra | is_relative_row | is_mixture_validation_row)
 _dropped = df[~_keep & df['Salt'].isin(ALL_SALTS)]
 if len(_dropped):
     print('Role selection dropped these (Source, Salt) groups for model salts '
@@ -1219,6 +1233,7 @@ salt_dfs = {}
 cross_lab_validation_dfs = {}
 print(f"\nSource roles: TRAINING={TRAINING_SOURCES}  PROMOTED={PROMOTED_SALTS_BY_SOURCE}")
 print(f"VALIDATION={VALIDATION_SALTS_BY_SOURCE}  TEST-POOL EXTRAS={HELDOUT_EXTRA_SOURCES}")
+print(f"MIXTURE VALIDATION (any source, Mixture=True)={MIXTURE_VALIDATION_SALTS}")
 print(f"RELATIVE (staged)={RELATIVE_SOURCES}")
 print(f"Switches: SQRT_I={SQRT_I}  WALDEN={WALDEN}  WALDEN_ALPHA_FIT={WALDEN_ALPHA_FIT}  "
       f"INCLUDE_PAN={INCLUDE_PAN}  SPECIATION_DB={SPECIATION_DB}  FIT_MODE={FIT_MODE}  "
@@ -1267,8 +1282,7 @@ for salt in ALL_SALTS:
         cross_lab_validation_dfs[(salt, src)] = d_val
         print(f"  -> cross-lab validation stash: {salt}/{src}: {len(d_val)} rows")
 
-_mix_salts = sorted({s for salts in VALIDATION_SALTS_BY_SOURCE.values()
-                     for s in salts if s not in ALL_SALTS})
+_mix_salts = sorted(set(MIXTURE_VALIDATION_SALTS) & set(df['Salt']))
 mixture_validation_df = df[df['Salt'].isin(_mix_salts)].copy()
 if _mix_salts:
     print(f"Mixture validation staged: {len(mixture_validation_df)} rows for {_mix_salts}")
