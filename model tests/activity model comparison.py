@@ -15,7 +15,8 @@ from matplotlib import gridspec, cm
 _ORIG_SHOW = plt.show
 
 GITHUB_RAW = 'https://raw.githubusercontent.com/alicjaurbanska/conductivity-jpl/main/'
-MODEL_SOURCE_PATH = 'conductivity spline model'   # exact file name/path in the repo
+MODEL_SOURCE_PATH = 'conductivity_spline_model.py'  
+MC12_SOURCE_PATH = 'MC12_conductivity_model.py'
 
 VARIANTS = {
     'supcrt_hkf':    'SUPCRT / HKF',
