@@ -15,7 +15,8 @@ from matplotlib import gridspec, cm
 _ORIG_SHOW = plt.show
 
 GITHUB_RAW = 'https://raw.githubusercontent.com/alicjaurbanska/conductivity-jpl/main/'
-MODEL_SOURCE_PATH = 'conductivity_spline_model.py'  
+
+MODEL_SOURCE_PATH = 'conductivity_model.py'
 MC12_SOURCE_PATH = 'MC12_conductivity_model.py'
 
 VARIANTS = {
@@ -79,7 +80,7 @@ def variant_source(key):
     return s.replace(_MISS_LINE, _DROP_NONAMBIENT_GAPS + _MISS_LINE, 1)
 
 # ---- fetch the McCleskey (2012) baseline -----------------------------
-MC12_SOURCE_PATH = 'MC12 conductivity model'
+MC12_SOURCE_PATH = 'MC12_conductivity_model.py'
 print(f'Fetching MC12 source: {MC12_SOURCE_PATH}')
 resp_mc = requests.get(GITHUB_RAW + quote(MC12_SOURCE_PATH))
 if resp_mc.status_code != 200:
