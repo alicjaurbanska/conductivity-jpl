@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from urllib.parse import quote
 
 _RAW = 'https://raw.githubusercontent.com/alicjaurbanska/conductivity-jpl/main/'
-_FILES = {'supcrt': 'speciation databases/speciation_supcrt.csv',
+_FILES = {'supcrt': 'speciation databases/speciation_supcrt_hkf.csv',
           'wateq4f': 'speciation databases/speciation_wateq4f.csv'}
 _R = 6  # key rounding, same as MERGE_DECIMALS
 
